@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="VeriAlert — Disaster Information Verification Agent for HACKNOVA'26. Verifies disaster-related claims against trusted alerts and incident reports." />
+    <title>SignalTrace — VeriAlert | Disaster Information Verification Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root">
+      <div class="app-startup-fallback" style="max-width:720px;margin:12vh auto;padding:2rem;color:#f8fafc;font:16px/1.6 system-ui,sans-serif">
+        <strong style="font-size:1.25rem">SignalTrace is starting…</strong>
+        <p style="color:#94a3b8">If this message stays here, the frontend script did not finish loading. Check the browser console and Vite terminal for the startup error.</p>
+      </div>
+    </div>
+    <script>
+      const showStartupError = (message) => {
+        const root = document.getElementById('root');
+        if (!root || !root.querySelector('.app-startup-fallback')) return;
+        root.innerHTML = '';
+        const panel = document.createElement('div');
+        panel.style.cssText = 'max-width:760px;margin:12vh auto;padding:2rem;color:#f8fafc;font:16px/1.6 system-ui,sans-serif';
+        const title = document.createElement('strong');
+        title.style.fontSize = '1.25rem';
+        title.textContent = 'SignalTrace frontend failed to start';
+        const details = document.createElement('pre');
+        details.style.cssText = 'margin-top:1rem;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere;color:#fda4af;background:#0d1322;border:1px solid rgba(255,255,255,.12);border-radius:8px';
+        details.textContent = message;
+        panel.append(title, details);
+        root.append(panel);
+      };
+      window.addEventListener('error', (event) => {
+        showStartupError(event.message || `Failed to load ${event.filename || 'a frontend script'}`);
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        showStartupError(event.reason?.stack || event.reason?.message || String(event.reason));
+      });
+      setTimeout(() => {
+        if (document.querySelector('.app-startup-fallback')) {
+          showStartupError('The frontend entry module did not mount the React app. Check the Vite terminal for module resolution or transform errors.');
+        }
+      }, 10000);
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

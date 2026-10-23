@@ -1,0 +1,27 @@
+{
+  "name": "signaltrace-server",
+  "version": "1.0.0",
+  "description": "SignalTrace Backend API - Disaster Information Verification Agent",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node src/scripts/seed.js",
+    "ingest:usgs": "node src/scripts/ingestIncidents.js",
+    "sync:incidents": "node src/scripts/ingestIncidents.js",
+    "test:live": "node src/scripts/checkLiveFeed.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mongoose": "^8.9.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9",
+    "supertest": "^7.0.0",
+    "vitest": "^3.0.5"
+  }
+}

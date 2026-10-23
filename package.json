@@ -1,0 +1,23 @@
+{
+  "name": "signaltrace",
+  "version": "1.0.0",
+  "description": "SignalTrace: Disaster Information Verification Agent",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "start:server": "npm --prefix server start",
+    "seed": "npm --prefix server run seed",
+    "ingest:usgs": "npm --prefix server run ingest:usgs",
+    "sync:incidents": "npm --prefix server run sync:incidents",
+    "build": "npm --prefix client run build",
+    "build:client": "npm --prefix client run build",
+    "test": "npm --prefix server test",
+    "test:server": "npm --prefix server test",
+    "test:live": "npm --prefix server run test:live"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
