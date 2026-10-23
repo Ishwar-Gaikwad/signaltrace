@@ -3,8 +3,7 @@
  *
  * VERDICT PRECEDENCE RULE (applied in order, exactly one verdict per atomic claim):
  *   1. OUTDATED    — A contradicting Evidence record has `supersedes: true` AND its
- *                    `evidenceTimestamp` is <= the claim's `publishedAt`, confirming the
- *                    correcting bulletin predates (or matches) the claim's own timestamp.
+ *                    `evidenceTimestamp` is newer than the claim's `publishedAt`.
  *                    Both conditions must be present; either alone is insufficient.
  *                    Keyword matching in `explanation` text is NOT used as a primary signal.
  *
@@ -53,7 +52,7 @@ import { matchAndCorroborateClaim } from './corroborationMatcher.service.js';
  *
  * Strict conditions — BOTH must be true:
  *   (a) `evidenceDoc.supersedes === true`  (curator-set structural flag)
- *   (b) `evidenceDoc.evidenceTimestamp <= claimPublishedAt`  (bulletin predates the claim)
+ *   (b) `evidenceDoc.evidenceTimestamp > claimPublishedAt` (correction is newer than the claim)
  *
  * Neither condition alone is sufficient. This prevents keyword-brittle false positives.
  *
@@ -72,7 +71,7 @@ function isConfirmedSupersession(evidenceDoc, claimPublishedAt) {
 
   // Both timestamps must be present and the correcting bulletin must not post-date the claim
   if (!evidenceTs || !claimTs) return false;
-  return evidenceTs <= claimTs;
+  return Number.isFinite(evidenceTs.getTime()) && Number.isFinite(claimTs.getTime()) && evidenceTs > claimTs;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +99,11 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
   const claimMongoId = parentClaim._id;
 
   // Load every Evidence document linked to this (claimId, atomicClaimId) pair
-  const evidenceDocs = await Evidence.find({ claimId: claimMongoId, atomicClaimId }).lean();
+  const evidenceDocs = await Evidence.find({
+    claimId: claimMongoId,
+    atomicClaimId,
+    isSynthetic: parentClaim.isSynthetic === true
+  }).lean();
 
   // Preserve all evidence for transparency — never omit contradictory records
   const evidenceSummary = evidenceDocs.map((ev) => ({
@@ -110,7 +113,8 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
     explanation: ev.explanation,
     excerpts: ev.excerpts || [],
     geographicRelevance: ev.geographicRelevance || null,
-    evidenceTimestamp: ev.evidenceTimestamp || null
+    evidenceTimestamp: ev.evidenceTimestamp || null,
+    isSynthetic: ev.isSynthetic === true
   }));
 
   const linkedEvidenceIds = evidenceDocs.map((ev) => ev._id);
@@ -121,7 +125,7 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
     return {
       verificationStatus: 'Unverified',
       verificationExplanation:
-        'No corroborating or contradicting authoritative evidence was found for this claim in the stored incident reports.',
+        `No corroborating or contradicting report was found. ${evidenceDocs[0]?.explanation || 'Available evidence is insufficient.'}`,
       linkedEvidenceIds,
       evidenceSummary
     };
@@ -129,7 +133,7 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
 
   // ── Rule 1: OUTDATED (confirmed structural supersession) ──────────────────
   //
-  // Requires evidence.supersedes === true AND evidenceTimestamp <= claimPublishedAt.
+  // Requires evidence.supersedes === true AND evidenceTimestamp > claimPublishedAt.
   // Neither condition alone suffices. Keyword matching in explanation text is NOT used.
   const claimPublishedAt = parentClaim.publishedAt || null;
   const supersessionDocs = evidenceDocs.filter((ev) =>
@@ -141,7 +145,7 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
     return {
       verificationStatus: 'Outdated',
       verificationExplanation:
-        `This claim references information that has been superseded by a newer authoritative bulletin. ${primary.explanation}`,
+        `This claim is outdated because a later report superseded the information. ${primary.explanation}`,
       linkedEvidenceIds,
       evidenceSummary
     };
@@ -157,7 +161,7 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
     const primary = contradictingDocs[0];
     return {
       verificationStatus: 'Conflicting',
-      verificationExplanation: `This claim is contradicted by authoritative evidence. ${primary.explanation}`,
+      verificationExplanation: `This claim is contradicted by the linked source report. ${primary.explanation}`,
       linkedEvidenceIds,
       evidenceSummary
     };
@@ -173,7 +177,7 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
     const primary = supportingDocs[0];
     return {
       verificationStatus: 'Verified',
-      verificationExplanation: `This claim is corroborated by authoritative evidence. ${primary.explanation}`,
+      verificationExplanation: `This claim is corroborated by the linked source report. ${primary.explanation}`,
       linkedEvidenceIds,
       evidenceSummary
     };

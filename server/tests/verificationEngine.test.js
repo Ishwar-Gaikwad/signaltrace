@@ -313,8 +313,8 @@ describe('Phase 4.1 — Verification Rule Hardening & Regression Suite', () => {
     expect(contraEvidence.geographicRelevance.locationMatched).toBe(false);
   });
 
-  // 5. Geographic uncertainty and irrelevant incident locations
-  it('5. Raw distance or uncertain location without contradicting role does not produce Conflicting', async () => {
+  // 5. Proximity alone is contextual, not proof
+  it('5. A zero-distance match alone does not produce Verified or Conflicting', async () => {
     const dummyClaim = await Claim.create({
       originalText: 'Test post for geographic uncertainty',
       sourcePlatform: 'twitter',
@@ -327,15 +327,15 @@ describe('Phase 4.1 — Verification Rule Hardening & Regression Suite', () => {
       claimText: 'Minor flood near river bank'
     };
 
-    // Create an evidence with large distanceKm and locationMatched: false, but role: 'contextual'
+    // A nearby record with locationMatched=true still has no supporting source role.
     const ev = await Evidence.create({
       claimId: dummyClaim._id,
       atomicClaimId: 'atom-geo-test-1',
       role: 'contextual',
       geographicRelevance: {
-        locationMatched: false,
-        distanceKm: 95.5,
-        notes: 'Distant weather station observation'
+        locationMatched: true,
+        distanceKm: 0,
+        notes: 'Co-located point; no claim detail assessed'
       },
       explanation: 'Contextual regional weather reading from 95km away.',
       isSynthetic: false
@@ -343,7 +343,7 @@ describe('Phase 4.1 — Verification Rule Hardening & Regression Suite', () => {
 
     try {
       const result = await determineVerificationStatus(dummyAtom, dummyClaim.toObject());
-      // Because role is contextual and no supporting/contradicting exists, status should be Unverified, NOT Conflicting
+      // Distance zero must not upgrade a contextual record to Verified.
       expect(result.verificationStatus).toBe('Unverified');
     } finally {
       await Evidence.deleteOne({ _id: ev._id });
@@ -352,7 +352,7 @@ describe('Phase 4.1 — Verification Rule Hardening & Regression Suite', () => {
   });
 
   // 6. Explicit supersession
-  it('6. Explicit supersession (supersedes: true AND evidenceTimestamp <= claimPublishedAt) returns Outdated', async () => {
+  it('6. Explicit newer supersession returns Outdated', async () => {
     const claimC = await getClaimLean('synth-claim-003');
     const atomC = claimC.atomicClaims[0];
 

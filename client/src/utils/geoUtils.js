@@ -33,6 +33,68 @@ export const isValidCoordinate = (coords) => {
   );
 };
 
+/** Return the incident list exposed by the frontend API service. */
+export const getIncidentRecords = (response) =>
+  Array.isArray(response?.incidents) ? response.incidents : [];
+
+/** Use only the explicit backend provenance flag; never guess from sourceName. */
+export const getIncidentProvenance = (incident) => {
+  if (incident?.isSynthetic === true) return 'synthetic';
+  if (incident?.isSynthetic === false) return 'live';
+  return 'unknown';
+};
+
+/** Describe distance as proximity only; it is not a verification result. */
+export const getSpatialProximityMessage = (incident, distanceKm) => {
+  const provenance = getIncidentProvenance(incident);
+  const distance = Number.isFinite(distanceKm) ? `${distanceKm} km` : 'an unknown distance';
+
+  if (provenance === 'synthetic') {
+    return {
+      provenanceLabel: 'DEMO / SYNTHETIC',
+      message: `Matches a synthetic demonstration incident (${distance} away); this is not live confirmation. Distance measures spatial proximity only and does not verify the claim.`
+    };
+  }
+  if (provenance === 'live') {
+    return {
+      provenanceLabel: 'LIVE SOURCE RECORD',
+      message: `Nearest live incident record is ${distance} away. This measures spatial proximity only and does not verify the claim details.`
+    };
+  }
+  return {
+    provenanceLabel: 'PROVENANCE UNKNOWN',
+    message: `Nearest incident record is ${distance} away. Provenance is unavailable; distance alone does not verify the claim.`
+  };
+};
+
+/** Apply the map's visible filters to both the marker set and incident feed. */
+export const filterIncidents = (
+  incidents,
+  { provenance = 'all', eventType = 'all', severity = 'all', timeWindow = 'all' } = {},
+  referenceTime = Date.now()
+) => {
+  if (!Array.isArray(incidents)) return [];
+
+  return incidents.filter((incident) => {
+    if (provenance === 'live' && getIncidentProvenance(incident) !== 'live') return false;
+    if (provenance === 'synthetic' && getIncidentProvenance(incident) !== 'synthetic') return false;
+    if (eventType !== 'all' && incident.eventType?.toLowerCase() !== eventType.toLowerCase()) return false;
+    if (severity !== 'all' && incident.severity?.toLowerCase() !== severity.toLowerCase()) return false;
+
+    if (timeWindow !== 'all') {
+      const timeValue = incident.publishedAt || incident.eventOccurredAt || incident.createdAt;
+      if (!timeValue) return false;
+      const incidentTime = new Date(timeValue).getTime();
+      const ageMs = referenceTime - incidentTime;
+      if (timeWindow === '24h' && ageMs > 24 * 60 * 60 * 1000) return false;
+      if (timeWindow === '7d' && ageMs > 7 * 24 * 60 * 60 * 1000) return false;
+      if (timeWindow === '30d' && ageMs > 30 * 24 * 60 * 60 * 1000) return false;
+    }
+
+    return true;
+  });
+};
+
 /**
  * Format coordinates for human display with cardinal directions
  * @param {object} coords - { latitude, longitude }

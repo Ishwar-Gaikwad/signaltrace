@@ -1,15 +1,10 @@
 /**
- * SignalTrace — Automated Incident Corroboration & Evidence Matcher
- *
- * Dynamically queries authoritative IncidentReport records in MongoDB to find
- * matching or contradicting official alerts for incoming atomic claims.
- * Generates Evidence records grounded in real stored reports with source citations,
- * timestamps, and contradiction/supporting roles before the verification engine runs.
+ * Match an atomic claim only to a same-provenance, same-hazard report that names
+ * the claimed location. A broad same-hazard match is context at best, never proof.
  */
 
 import { IncidentReport, Evidence } from '../../models/index.js';
 
-// Regex dictionary for detecting hazard event types
 const HAZARD_PATTERNS = [
   { type: 'earthquake', regex: /\b(earthquake|quake|tremor|seismic|richter|epicenter|mww|fault line)\b/i },
   { type: 'flood', regex: /\b(flood|flooding|inundat|water level|submerged|overflow|embankment|river)\b/i },
@@ -19,219 +14,326 @@ const HAZARD_PATTERNS = [
   { type: 'storm', regex: /\b(thunderstorm|cloudburst|hailstorm|gale|severe weather)\b/i }
 ];
 
-// Common location extractor helper
-function extractLocationKeywords(text, claimedLocation) {
-  const keywords = [];
-  if (claimedLocation?.city) keywords.push(claimedLocation.city);
-  if (claimedLocation?.region) keywords.push(claimedLocation.region);
-  if (claimedLocation?.rawText) keywords.push(claimedLocation.rawText);
+const LOCATION_FIELDS = ['city', 'rawText'];
+const MATERIAL_PATTERNS = {
+  casualty: /\b(death|deaths|dead|fatalit(?:y|ies)|killed|injured|casualt(?:y|ies))\b/i,
+  evacuation: /\b(evacuat\w*|relocat\w*|shelter\w*)\b/i,
+  damage: /\b(damag\w*|destroy\w*|collaps\w*|flatten\w*|washed away|crack\w*|inundat\w*)\b/i
+};
+const CLAIM_DETAIL_PATTERNS = [
+  { pattern: /\b(?:danger (?:mark|level|threshold)|crossed (?:the )?danger|exceed(?:ed)? (?:the )?danger|overtopp\w*|embankment breach)\b/i, label: 'danger-level or breach detail' },
+  { pattern: /\b(?:collaps\w*|flatten\w*|washed away)\b/i, label: 'collapse or destruction detail' },
+  { pattern: /\b(?:red|orange|yellow)\s+(?:alert|warning|advisory)\b/i, label: 'alert level' },
+  { pattern: /\b(?:landfall|storm surge|recurv\w*)\b/i, label: 'storm movement detail' },
+  { pattern: /\b\d+(?:\.\d+)?\s*(?:km\/?h|kmph|mph|knots?)\b/i, label: 'wind-speed figure' }
+];
+const CORRECTION_PATTERN = /\b(cancel(?:led|ed|lation)?|withdraw(?:n|al)?|stand[ -]?down|all[ -]?clear|downgrad(?:e|ed|ing)|recurv(?:e|ed)|supersed(?:e|ed)|revok(?:e|ed)|rescinded|retracted|correct(?:ed|ion))\b/i;
+const DIRECTIVE_PATTERN = /\b(evacuat\w*|alert|warning|order|advisory|all[ -]?clear|landfall|currently active|active now|right now)\b/i;
+const NUMBER_PATTERN = /\b\d+(?:,\d{3})*(?:\.\d+)?\b/;
+const ALL_NUMBERS_PATTERN = /\b\d+(?:,\d{3})*(?:\.\d+)?\b/g;
+const NUMBER_WORD_PATTERN = /\b(one|two|three|four|five|six|seven|eight|nine|ten|dozen|hundred|hundreds|thousand|thousands)\b/i;
 
-  // Extract capitalized words that could represent places/proper nouns (min 3 chars)
-  const matches = text.match(/\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*\b/g);
-  if (matches) {
-    for (const m of matches) {
-      if (!['The', 'Massive', 'Severe', 'Alert', 'Government', 'Officials', 'Report', 'Water', 'Over', 'Red'].includes(m)) {
-        keywords.push(m);
+const normalize = (value) => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function extractLocationTerms(atomicClaim, parentClaim) {
+  const terms = [];
+  const locations = [atomicClaim.location, atomicClaim.claimedLocation, parentClaim.claimedLocation];
+  for (const location of locations) {
+    for (const field of LOCATION_FIELDS) {
+      if (typeof location?.[field] === 'string' && location[field].trim()) {
+        terms.push(location[field].trim());
       }
+    }
+    for (const entity of location?.entities || []) {
+      if (typeof entity === 'string') terms.push(entity.trim());
     }
   }
 
-  return [...new Set(keywords)];
+  for (const entity of atomicClaim.entities || []) {
+    if (entity?.category === 'location' && typeof entity.name === 'string') terms.push(entity.name.trim());
+  }
+
+  return [...new Set(terms.map((term) => term.trim()).filter((term) => term.length >= 3))];
 }
 
-// Extract magnitude from claim text if present (e.g. 7.2 or M7.2)
+function incidentMatchesLocation(incident, terms) {
+  const geography = incident.geographicInfo || {};
+  const sourceText = normalize([
+    geography.locationName,
+    geography.adminRegion,
+    incident.title,
+    incident.description
+  ].filter(Boolean).join(' '));
+  return terms.some((term) => {
+    const escaped = escapeRegex(normalize(term));
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, 'u').test(sourceText);
+  });
+}
+
+function incidentText(incident) {
+  return [incident.title, incident.description].filter((value) => typeof value === 'string').join(' ');
+}
+
 function extractClaimMagnitude(text) {
-  const match = text.match(/(?:magnitude|m|richter)?\s*([4-9]\.[0-9]|[4-9])(?:\s*(?:richter|magnitude))?/i);
-  return match ? parseFloat(match[1]) : null;
+  const match = String(text || '').match(/\b(?:magnitude\s*|m\s*|richter\s*)([0-9](?:\.[0-9]+)?)\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+function extractSourceMagnitude(incident) {
+  const structured = incident.rawPayload?.magnitude ?? incident.rawPayload?.mag;
+  if (Number.isFinite(Number(structured))) return Number(structured);
+  const match = incidentText(incident).match(/\b(?:magnitude\s*|m\s*)([0-9](?:\.[0-9]+)?)\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+function numbersIn(text) {
+  return (String(text || '').match(ALL_NUMBERS_PATTERN) || []).map((number) => Number(number.replaceAll(',', '')));
+}
+
+function getMaterialCategory(text) {
+  for (const [category, pattern] of Object.entries(MATERIAL_PATTERNS)) {
+    if (pattern.test(text)) return category;
+  }
+  return null;
+}
+
+function hasSpecificQuantity(text) {
+  return NUMBER_PATTERN.test(text) || NUMBER_WORD_PATTERN.test(text);
+}
+
+function isNegativeAssertion(text, category) {
+  const pattern = MATERIAL_PATTERNS[category];
+  if (!pattern) return false;
+  const match = String(text || '').match(pattern);
+  if (!match || match.index === undefined) return false;
+  return /\b(no|zero|none|without|not|never)\b/i.test(text.slice(Math.max(0, match.index - 24), match.index));
+}
+
+function categoryHasExplicitSourceDetail(sourceText, category) {
+  if (category === 'casualty') return /\b(death|deaths|dead|fatalit(?:y|ies)|killed|injured|casualt(?:y|ies))\b/i.test(sourceText);
+  if (category === 'evacuation') return /\b(evacuat\w*|relocat\w*|shelter\w*)\b/i.test(sourceText);
+  if (category === 'damage') return /\b(damag\w*|destroy\w*|collaps\w*|flatten\w*|washed away|crack\w*|inundat\w*)\b/i.test(sourceText);
+  return false;
+}
+
+function assessIncident(claimText, incident, claimPublishedAt, locationTerms) {
+  const sourceText = incidentText(incident);
+  const claimMagnitude = extractClaimMagnitude(claimText);
+  const sourceMagnitude = extractSourceMagnitude(incident);
+  const materialCategory = getMaterialCategory(claimText);
+  const claimHasQuantity = hasSpecificQuantity(claimText);
+  const sourceHasCategory = materialCategory && categoryHasExplicitSourceDetail(sourceText, materialCategory);
+  const correction = CORRECTION_PATTERN.test(sourceText) && DIRECTIVE_PATTERN.test(claimText) && DIRECTIVE_PATTERN.test(sourceText);
+
+  if (claimMagnitude !== null) {
+    if (sourceMagnitude === null) {
+      return { role: 'contextual', supersedes: false, explanation: `The report matches the claimed hazard and location but does not state a magnitude.` };
+    }
+    const difference = Math.abs(claimMagnitude - sourceMagnitude);
+    if (difference >= 0.5) {
+      return {
+        role: 'contradicting',
+        supersedes: false,
+        explanation: `The source reports magnitude ${sourceMagnitude}; the claim states ${claimMagnitude}.`
+      };
+    }
+    if (difference > 0.05) {
+      return {
+        role: 'contextual',
+        supersedes: false,
+        explanation: `The source reports magnitude ${sourceMagnitude}, which does not exactly confirm the claimed ${claimMagnitude}.`
+      };
+    }
+  }
+
+  if (materialCategory) {
+    if (!sourceHasCategory) {
+      return {
+        role: 'contextual',
+        supersedes: false,
+        explanation: `The report matches the hazard and location but does not provide the claimed ${materialCategory} detail.`
+      };
+    }
+
+    const claimNegative = isNegativeAssertion(claimText, materialCategory);
+    const sourceNegative = isNegativeAssertion(sourceText, materialCategory);
+    const claimNumbers = numbersIn(claimText);
+    const sourceNumbers = numbersIn(sourceText);
+    if (claimHasQuantity) {
+      if (claimNumbers.length === 0 || sourceNumbers.length === 0) {
+        return {
+          role: 'contextual',
+          supersedes: false,
+          explanation: `The report mentions ${materialCategory} information but does not state a comparable quantity.`
+        };
+      }
+      const sameQuantity = claimNumbers.some((number) => sourceNumbers.includes(number));
+      if (!sameQuantity) {
+        return {
+          role: 'contradicting',
+          supersedes: false,
+          explanation: `The source gives a different explicit ${materialCategory} quantity from the one in the claim.`
+        };
+      }
+    }
+    if (claimNegative !== sourceNegative) {
+      return {
+        role: 'contradicting',
+        supersedes: false,
+        explanation: `The source explicitly describes ${materialCategory} information that conflicts with the claim’s assertion.`
+      };
+    }
+  } else if (claimHasQuantity && claimMagnitude === null) {
+    const claimNumbers = numbersIn(claimText);
+    const sourceNumbers = numbersIn(sourceText);
+    if (!claimNumbers.length || !sourceNumbers.length || !claimNumbers.some((number) => sourceNumbers.includes(number))) {
+      return {
+        role: 'contextual',
+        supersedes: false,
+        explanation: 'The report matches the hazard and location but does not state the specific quantity in the claim.'
+      };
+    }
+  }
+
+  const unsupportedDetail = CLAIM_DETAIL_PATTERNS.find(({ pattern }) => pattern.test(claimText) && !pattern.test(sourceText));
+  if (unsupportedDetail) {
+    return {
+      role: 'contextual',
+      supersedes: false,
+      explanation: `The report matches the hazard and location but does not state the claimed ${unsupportedDetail.label}.`
+    };
+  }
+
+  if (correction) {
+    const evidenceTime = incident.publishedAt ? new Date(incident.publishedAt) : null;
+    const claimTime = claimPublishedAt ? new Date(claimPublishedAt) : null;
+    const validEvidenceTime = evidenceTime && Number.isFinite(evidenceTime.getTime());
+    const validClaimTime = claimTime && Number.isFinite(claimTime.getTime());
+    if (!validEvidenceTime || !validClaimTime) {
+      return {
+        role: 'contradicting',
+        supersedes: false,
+        explanation: 'The source explicitly reports a cancellation or correction, but a missing timestamp prevents classifying this claim as outdated.'
+      };
+    }
+    if (evidenceTime > claimTime) {
+      return {
+        role: 'contradicting',
+        supersedes: true,
+        explanation: `A later report for ${locationTerms.join(', ')} explicitly says: ${sourceText.slice(0, 180)}`
+      };
+    }
+    return {
+      role: 'contradicting',
+      supersedes: false,
+      explanation: `The source explicitly reports a cancellation or correction, but it is not newer than the claim: ${sourceText.slice(0, 180)}`
+    };
+  }
+
+  return {
+    role: 'supporting',
+    supersedes: false,
+    explanation: `The source report names the claimed hazard and location${claimMagnitude !== null && sourceMagnitude !== null ? ` and reports magnitude ${sourceMagnitude}` : ''}.`
+  };
+}
+
+function createInsufficientEvidence(claimDoc, atomicClaimId, explanation) {
+  return Evidence.create({
+    claimId: claimDoc._id,
+    atomicClaimId,
+    incidentReportIds: [],
+    excerpts: [],
+    role: 'insufficient',
+    evidenceTimestamp: null,
+    geographicRelevance: null,
+    explanation,
+    supersedes: false,
+    isSynthetic: claimDoc.isSynthetic === true
+  });
 }
 
 /**
- * Searches stored IncidentReports to corroborate or contradict a given atomic claim.
- * Generates and saves Evidence documents for the claim if none exist.
- *
- * @param {object} claimDoc - Full Mongoose Claim document
- * @returns {Promise<number>} Number of Evidence records generated
+ * Creates evidence only from same-provenance records that match the atomic
+ * statement's hazard and an explicitly named place. Insufficient details remain
+ * contextual so the verdict engine returns Unverified.
  */
 export async function matchAndCorroborateClaim(claimDoc) {
   const claimId = claimDoc._id;
-
-  // Idempotency check: if Evidence records already exist for this claim, do not duplicate
-  const existingCount = await Evidence.countDocuments({ claimId });
-  if (existingCount > 0) {
-    return existingCount;
-  }
-
   const atomicClaims = claimDoc.atomicClaims || [];
-  if (atomicClaims.length === 0) {
-    return 0;
-  }
+  if (atomicClaims.length === 0) return 0;
 
-  let totalGenerated = 0;
+  const totalGenerated = await Evidence.countDocuments({ claimId });
+  let generated = 0;
+  const syntheticClaim = claimDoc.isSynthetic === true;
 
   for (const atomicClaim of atomicClaims) {
-    const claimText = atomicClaim.text || atomicClaim.claimText || '';
     const atomicClaimId = atomicClaim.atomicClaimId;
+    if (await Evidence.exists({ claimId, atomicClaimId })) continue;
 
-    // 1. Identify hazard type
-    let matchedEventType = null;
-    for (const hp of HAZARD_PATTERNS) {
-      if (hp.regex.test(claimText) || hp.regex.test(claimDoc.originalText)) {
-        matchedEventType = hp.type;
-        break;
-      }
+    const claimText = atomicClaim.text || atomicClaim.claimText || '';
+    const matchedHazard = HAZARD_PATTERNS.find(({ regex }) => regex.test(claimText));
+    const locationTerms = extractLocationTerms(atomicClaim, claimDoc);
+    if (!matchedHazard) {
+      await createInsufficientEvidence(claimDoc, atomicClaimId, 'No supported hazard type was identified in this statement.');
+      generated++;
+      continue;
     }
-
-    // 2. Extract location keywords
-    const locationKeywords = extractLocationKeywords(claimText, claimDoc.claimedLocation);
-
-    // 3. Build MongoDB query against IncidentReport
-    const queryConditions = [];
-
-    if (matchedEventType) {
-      queryConditions.push({ eventType: matchedEventType });
-    }
-
-    if (locationKeywords.length > 0) {
-      const locRegexes = locationKeywords.map((k) => new RegExp(k, 'i'));
-      queryConditions.push({
-        $or: [
-          { 'geographicInfo.locationName': { $in: locRegexes } },
-          { 'geographicInfo.adminRegion': { $in: locRegexes } },
-          { 'geographicInfo.country': { $in: locRegexes } },
-          { title: { $in: locRegexes } },
-          { description: { $in: locRegexes } }
-        ]
-      });
-    }
-
-    // Query incident reports
-    let matchingIncidents = [];
-    if (queryConditions.length > 0) {
-      matchingIncidents = await IncidentReport.find({ $and: queryConditions })
-        .sort({ publishedAt: -1 })
-        .limit(3)
-        .lean();
-    }
-
-    // Fallback: if no location match, search by eventType alone
-    if (matchingIncidents.length === 0 && matchedEventType) {
-      matchingIncidents = await IncidentReport.find({ eventType: matchedEventType })
-        .sort({ publishedAt: -1 })
-        .limit(2)
-        .lean();
-    }
-
-    // If still no incidents found, create an 'insufficient' evidence record communicating uncertainty
-    if (matchingIncidents.length === 0) {
-      await Evidence.create({
-        claimId,
-        atomicClaimId,
-        incidentReportIds: [],
-        excerpts: [],
-        role: 'insufficient',
-        evidenceTimestamp: new Date(),
-        geographicRelevance: null,
-        explanation: 'No authoritative emergency reports found in repository matching the claimed hazard and location.',
-        supersedes: false,
-        isSynthetic: false
-      });
-      totalGenerated++;
+    if (locationTerms.length === 0) {
+      await createInsufficientEvidence(claimDoc, atomicClaimId, 'The statement does not identify a location that can be matched to a stored report.');
+      generated++;
       continue;
     }
 
-    // Extract claim metrics for cross-examination
-    const claimedMag = extractClaimMagnitude(claimText);
+    // Provenance is an eligibility condition, not a label applied after matching.
+    const candidates = await IncidentReport.find({
+      eventType: matchedHazard.type,
+      isSynthetic: syntheticClaim
+    }).sort({ publishedAt: -1, _id: -1 }).limit(100).lean();
+    const matchingIncidents = candidates.filter((incident) => incidentMatchesLocation(incident, locationTerms)).slice(0, 3);
 
-    // 4. Corroborate each matching incident
+    if (matchingIncidents.length === 0) {
+      await createInsufficientEvidence(
+        claimDoc,
+        atomicClaimId,
+        `No ${syntheticClaim ? 'demo' : 'live'} report matching the ${matchedHazard.type} hazard and stated location was found.`
+      );
+      generated++;
+      continue;
+    }
+
     for (const incident of matchingIncidents) {
-      let role = 'supporting';
-      let supersedes = false;
-      let explanation = '';
-      const incidentMag = incident.rawPayload?.magnitude || incident.rawPayload?.mag || null;
-      const incidentDesc = (incident.description || '').toLowerCase();
-      const incidentTitle = (incident.title || '').toLowerCase();
-
-      // Check temporal supersession / cancellation
-      const isCancellation =
-        incidentTitle.includes('downgrade') ||
-        incidentTitle.includes('cancellation') ||
-        incidentTitle.includes('stand-down') ||
-        incidentTitle.includes('recurved') ||
-        incidentTitle.includes('all clear') ||
-        incidentDesc.includes('cancelled') ||
-        incidentDesc.includes('downgraded');
-
-      const claimPublishedAt = claimDoc.publishedAt ? new Date(claimDoc.publishedAt) : null;
-      const incidentPublishedAt = incident.publishedAt ? new Date(incident.publishedAt) : new Date();
-
-      if (isCancellation && claimPublishedAt && incidentPublishedAt >= claimPublishedAt) {
-        role = 'contradicting';
-        supersedes = true;
-        explanation = `Superceded by newer authoritative bulletin '${incident.title}' (${incident.sourceName}) which withdrew or downgraded the directive.`;
-      }
-      // Check magnitude discrepancy (e.g. claimed 7.2 vs official 5.4)
-      else if (claimedMag !== null && incidentMag !== null && Math.abs(claimedMag - incidentMag) >= 0.5) {
-        role = 'contradicting';
-        explanation = `Contradicts official measurement from ${incident.sourceName}: reports magnitude ${incidentMag}, not claimed ${claimedMag}.`;
-      }
-      // Check severe casualty exaggeration (e.g. claim asserts hundreds dead vs report stating no casualties)
-      else if (
-        (claimText.toLowerCase().includes('hundreds dead') || claimText.toLowerCase().includes('flattened')) &&
-        (incidentDesc.includes('no major building collapses') || incidentDesc.includes('low casualty probability') || incidentDesc.includes('minor structural'))
-      ) {
-        role = 'contradicting';
-        explanation = `Official situation assessment from ${incident.sourceName} indicates minor damage with low casualty probability, contradicting claims of catastrophic destruction.`;
-      }
-      // Check hospital / infrastructure operational status contradiction
-      else if (
-        claimText.toLowerCase().includes('power grid is dead') ||
-        claimText.toLowerCase().includes('total darkness')
-      ) {
-        if (incidentDesc.includes('backup generators operating') || incidentDesc.includes('power operational') || incidentDesc.includes('grid stable')) {
-          role = 'contradicting';
-          explanation = `Official DEOC utility bulletin confirms backup power is operational, contradicting the total blackout claim.`;
-        }
-      }
-      // Supporting corroboration
-      else {
-        role = 'supporting';
-        explanation = `Corroborated by official emergency bulletin from ${incident.sourceName}: "${incident.title}".`;
-      }
-
-      // Excerpt creation
-      const excerptText = incident.description
-        ? incident.description.slice(0, 240)
-        : incident.title;
-
+      const assessment = assessIncident(claimText, incident, claimDoc.publishedAt, locationTerms);
+      const sourceText = incident.description || incident.title || '';
+      const sourceUrl = typeof incident.sourceUrl === 'string' && /^https?:\/\//i.test(incident.sourceUrl)
+        ? incident.sourceUrl
+        : null;
       await Evidence.create({
         claimId,
         atomicClaimId,
         incidentReportIds: [incident._id],
-        excerpts: [
-          {
-            excerptText,
-            sourceRef: incident.sourceReportId || null,
-            sourceName: incident.sourceName || 'Emergency Authority',
-            url: incident.sourceUrl || null
-          }
-        ],
-        role,
-        evidenceTimestamp: incident.publishedAt || new Date(),
-        geographicRelevance: incident.geographicInfo?.coordinates
-          ? {
-              locationMatched: locationKeywords.length > 0,
-              distanceKm: null,
-              notes: incident.geographicInfo.locationName || null
-            }
-          : null,
-        explanation,
-        supersedes,
-        isSynthetic: false
+        excerpts: sourceText
+          ? [{
+              excerptText: sourceText.slice(0, 500),
+              sourceRef: incident.sourceReportId || null,
+              sourceName: incident.sourceName || null,
+              url: sourceUrl
+            }]
+          : [],
+        role: assessment.role,
+        evidenceTimestamp: incident.publishedAt || null,
+        geographicRelevance: {
+          locationMatched: true,
+          distanceKm: null,
+          notes: incident.geographicInfo?.locationName || locationTerms.join(', ')
+        },
+        explanation: assessment.explanation,
+        supersedes: assessment.supersedes,
+        isSynthetic: incident.isSynthetic === true
       });
-
-      totalGenerated++;
+      generated++;
     }
   }
 
-  return totalGenerated;
+  return totalGenerated + generated;
 }

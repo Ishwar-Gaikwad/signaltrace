@@ -20,7 +20,7 @@ describe('GET /api/health', () => {
     expect(res.status).toBe(200);
     const { data } = res.body;
 
-    expect(data).toHaveProperty('status', 'healthy');
+    expect(data.status).toBe(data.database.status === 'connected' ? 'healthy' : 'degraded');
     expect(data).toHaveProperty('service', 'SignalTrace — VeriAlert API');
     expect(data).toHaveProperty('version');
     expect(data).toHaveProperty('environment');

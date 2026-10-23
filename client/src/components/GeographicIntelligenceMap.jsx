@@ -39,9 +39,13 @@ import {
   isValidCoordinate,
   formatCoordinates,
   computeIncidentBounds,
+  filterIncidents,
+  getIncidentRecords,
   getSeverityConfig,
   calculateDistanceKm,
-  resolveClaimCoordinates
+  resolveClaimCoordinates,
+  getIncidentProvenance,
+  getSpatialProximityMessage
 } from '../utils/geoUtils';
 
 // Helper component to programmatically control Leaflet map viewport
@@ -63,9 +67,19 @@ const MapController = ({ bounds, targetPoint, shouldFitBounds }) => {
   return null;
 };
 
+const getSeverityTextColor = (severity) => {
+  switch (String(severity || '').toLowerCase()) {
+    case 'extreme': return '#be123c';
+    case 'severe': return '#92400e';
+    case 'moderate': return '#075985';
+    case 'minor': return '#047857';
+    default: return '#475569';
+  }
+};
+
 // Create custom SVG/HTML divIcon avoiding broken PNG assets in Vite
 const createIncidentMarkerIcon = (incident, isSelected) => {
-  const isLive = !incident.isSynthetic;
+  const provenance = getIncidentProvenance(incident);
   const sev = getSeverityConfig(incident.severity);
 
   const glyphMap = {
@@ -79,8 +93,8 @@ const createIncidentMarkerIcon = (incident, isSelected) => {
   };
   const glyph = glyphMap[incident.eventType?.toLowerCase()] || '📍';
 
-  const badgeText = isLive ? 'LIVE' : 'DEMO';
-  const badgeClass = isLive ? 'pin-live' : 'pin-demo';
+  const badgeText = provenance === 'live' ? 'LIVE' : provenance === 'synthetic' ? 'DEMO' : 'UNKNOWN';
+  const badgeClass = provenance === 'live' ? 'pin-live' : provenance === 'synthetic' ? 'pin-demo' : 'pin-unknown';
   const selectedClass = isSelected ? 'pin-selected' : '';
 
   const html = `
@@ -147,7 +161,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
     try {
       // Request up to 100 incident records
       const res = await fetchIncidents({ limit: 100 });
-      setIncidents(res.data || []);
+      setIncidents(getIncidentRecords(res));
       setReferenceTime(Date.now());
     } catch (err) {
       setError(err.message || 'Failed to load incident reports for map.');
@@ -162,36 +176,19 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
 
   // Filtered dataset
   const filteredIncidents = useMemo(() => {
-    return incidents.filter((incident) => {
-      // Provenance filter
-      if (provenanceFilter === 'live' && incident.isSynthetic) return false;
-      if (provenanceFilter === 'synthetic' && !incident.isSynthetic) return false;
-
-      // Event type filter
-      if (eventTypeFilter !== 'all' && incident.eventType?.toLowerCase() !== eventTypeFilter.toLowerCase()) {
-        return false;
-      }
-
-      // Severity filter
-      if (severityFilter !== 'all' && incident.severity?.toLowerCase() !== severityFilter.toLowerCase()) {
-        return false;
-      }
-
-      // Time window filter on publishedAt or eventOccurredAt
-      if (timeFilter !== 'all') {
-        const timeVal = incident.publishedAt || incident.eventOccurredAt || incident.createdAt;
-        if (!timeVal) return false;
-        const incidentDate = new Date(timeVal).getTime();
-        const diffMs = referenceTime - incidentDate;
-
-        if (timeFilter === '24h' && diffMs > 24 * 60 * 60 * 1000) return false;
-        if (timeFilter === '7d' && diffMs > 7 * 24 * 60 * 60 * 1000) return false;
-        if (timeFilter === '30d' && diffMs > 30 * 24 * 60 * 60 * 1000) return false;
-      }
-
-      return true;
-    });
+    return filterIncidents(incidents, {
+      provenance: provenanceFilter,
+      eventType: eventTypeFilter,
+      severity: severityFilter,
+      timeWindow: timeFilter
+    }, referenceTime);
   }, [incidents, provenanceFilter, eventTypeFilter, severityFilter, timeFilter, referenceTime]);
+
+  const hasActiveFilters =
+    provenanceFilter !== 'all' ||
+    eventTypeFilter !== 'all' ||
+    severityFilter !== 'all' ||
+    timeFilter !== 'all';
 
   // Subset with valid coordinates (safe for mapping)
   const mappedIncidents = useMemo(() => {
@@ -225,6 +222,16 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
     }
     return closest;
   }, [claimGeo, mappedIncidents]);
+  const spatialProximity = spatialCorrelation
+    ? getSpatialProximityMessage(spatialCorrelation.incident, spatialCorrelation.distanceKm)
+    : null;
+  const spatialProvenance = spatialCorrelation
+    ? getIncidentProvenance(spatialCorrelation.incident)
+    : 'unknown';
+  const spatialProximityColor = spatialProvenance === 'synthetic'
+    ? '#92400e'
+    : spatialProvenance === 'live' ? '#075985' : '#475569';
+  const spatialProximityBackground = spatialProvenance === 'synthetic' ? '#fffbeb' : '#eff6ff';
 
   // When active claim changes, smoothly focus map on the claim location
   useEffect(() => {
@@ -319,7 +326,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
           justifyContent: 'space-between',
           gap: '0.75rem',
           padding: '0.75rem 1rem',
-          background: 'rgba(255, 255, 255, 0.02)',
+          background: '#f8fafc',
           border: '1px solid var(--border-subtle)',
           borderRadius: 'var(--radius-md)',
           marginBottom: '1.25rem'
@@ -333,7 +340,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
               value={provenanceFilter}
               onChange={(e) => setProvenanceFilter(e.target.value)}
               style={{
-                background: '#090e1b',
+                background: '#ffffff',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-sm)',
@@ -355,7 +362,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
               value={eventTypeFilter}
               onChange={(e) => setEventTypeFilter(e.target.value)}
               style={{
-                background: '#090e1b',
+                background: '#ffffff',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-sm)',
@@ -381,7 +388,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value)}
               style={{
-                background: '#090e1b',
+                background: '#ffffff',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-sm)',
@@ -405,7 +412,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
               value={timeFilter}
               onChange={(e) => setTimeFilter(e.target.value)}
               style={{
-                background: '#090e1b',
+                background: '#ffffff',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-sm)',
@@ -442,7 +449,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
             </button>
           )}
 
-          {(provenanceFilter !== 'all' || eventTypeFilter !== 'all' || severityFilter !== 'all' || timeFilter !== 'all') && (
+          {hasActiveFilters && (
             <button
               type="button"
               className="btn btn-outline"
@@ -496,41 +503,39 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
             justifyContent: 'space-between',
             gap: '0.75rem',
             padding: '0.75rem 1rem',
-            background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.12) 0%, rgba(56, 189, 248, 0.08) 100%)',
-            border: '1px solid rgba(129, 140, 248, 0.4)',
+            background: 'linear-gradient(90deg, #eef2ff 0%, #eff8ff 100%)',
+            border: '1px solid rgba(99, 102, 241, 0.22)',
             borderRadius: 'var(--radius-md)',
             marginBottom: '1rem',
-            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.1)'
+            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.08)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <Target size={18} style={{ color: '#818cf8', flexShrink: 0 }} />
+            <Target size={18} style={{ color: '#4f46e5', flexShrink: 0 }} />
             <div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e0e7ff' }}>
-                Active Statement Location: <span style={{ color: '#ffffff' }}>{claimGeo.label}</span>
+              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
+                Active Statement Location: <span style={{ color: '#172033' }}>{claimGeo.label}</span>
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+              <div style={{ fontSize: '0.72rem', color: '#526176', fontFamily: 'var(--font-mono)' }}>
                 {formatCoordinates(claimGeo.coordinates)}
               </div>
             </div>
           </div>
 
-          {spatialCorrelation && (
+          {spatialCorrelation && spatialProximity && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <strong style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.25rem 0.5rem', borderRadius: '4px', color: spatialProximityColor, background: spatialProximityBackground, border: `1px solid ${spatialProximityColor}40` }}>
+                {spatialProximity.provenanceLabel}
+              </strong>
               <span
                 style={{
                   fontSize: '0.72rem',
-                  fontWeight: 700,
-                  padding: '0.25rem 0.6rem',
-                  borderRadius: 'var(--radius-sm)',
-                  background: spatialCorrelation.distanceKm <= 75 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-                  color: spatialCorrelation.distanceKm <= 75 ? 'var(--accent-cyan)' : '#fb7185',
-                  border: `1px solid ${spatialCorrelation.distanceKm <= 75 ? 'rgba(56, 189, 248, 0.35)' : 'rgba(244, 63, 94, 0.35)'}`
+                  color: spatialProximityColor,
+                  lineHeight: 1.4,
+                  maxWidth: '540px'
                 }}
               >
-                {spatialCorrelation.distanceKm <= 75
-                  ? `✅ Geographically Correlated (${spatialCorrelation.distanceKm} km to ${spatialCorrelation.incident.sourceName})`
-                  : `⚠️ Spatial Discrepancy (${spatialCorrelation.distanceKm} km from nearest alert)`}
+                {spatialProximity.message}
               </span>
             </div>
           )}
@@ -553,12 +558,12 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
               center={[22.5, 82.5]}
               zoom={4}
               scrollWheelZoom={false}
-              style={{ width: '100%', height: '100%', minHeight: '440px', background: '#070a13' }}
+              style={{ width: '100%', height: '100%', minHeight: '440px', background: '#f4f7fb' }}
             >
-              {/* CartoDB Dark Matter Basemap with OpenStreetMap attribution */}
+              {/* OpenStreetMap standard tiles; keep the required attribution visible. */}
               <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 maxZoom={19}
                 eventHandlers={{
                   tileerror: () => setTilesOffline(true),
@@ -598,23 +603,28 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                   icon={createClaimMarkerIcon()}
                 >
                   <Popup className="signaltrace-custom-popup">
-                    <div style={{ padding: '0.4rem', maxWidth: '280px', color: '#f1f5f9' }}>
+                    <div style={{ padding: '0.4rem', maxWidth: '280px', color: '#172033' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.25)', color: '#a5b4fc', border: '1px solid #818cf8' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '4px', background: '#eef2ff', color: '#4338ca', border: '1px solid #818cf8' }}>
                           REPORT UNDER VERIFICATION
                         </span>
                         {spatialCorrelation && (
-                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: spatialCorrelation.distanceKm <= 75 ? '#38bdf8' : '#fb7185' }}>
-                            {spatialCorrelation.distanceKm} km to alert
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: getIncidentProvenance(spatialCorrelation.incident) === 'synthetic' ? '#92400e' : '#075985' }}>
+                            {spatialProximity.provenanceLabel}
                           </span>
                         )}
                       </div>
-                      <h4 style={{ fontSize: '0.88rem', fontWeight: 600, color: '#ffffff', marginBottom: '0.3rem' }}>
+                      <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#172033', marginBottom: '0.3rem' }}>
                         🎯 {claimGeo.label}
                       </h4>
-                      <p style={{ fontSize: '0.75rem', color: '#cbd5e1', lineHeight: 1.45 }}>
+                      <p style={{ fontSize: '0.78rem', color: '#334155', lineHeight: 1.5, marginBottom: spatialCorrelation ? '0.5rem' : 0 }}>
                         {activeClaim?.originalText || activeClaim?.rawText || 'Active user-submitted crisis statement.'}
                       </p>
+                      {spatialCorrelation && (
+                        <p style={{ fontSize: '0.75rem', color: '#475569', lineHeight: 1.45, margin: 0 }}>
+                          {spatialProximity.message}
+                        </p>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -625,7 +635,9 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                 const lat = Number(incident.geographicInfo.coordinates.latitude);
                 const lng = Number(incident.geographicInfo.coordinates.longitude);
                 const isSelected = incident._id === selectedIncidentId;
-                const isLive = !incident.isSynthetic;
+                const provenance = getIncidentProvenance(incident);
+                const isLive = provenance === 'live';
+                const isSynthetic = provenance === 'synthetic';
                 const sevConfig = getSeverityConfig(incident.severity);
                 const radiusKm = incident.geographicInfo.affectedRadiusKm;
 
@@ -656,7 +668,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                       }}
                     >
                       <Popup className="signaltrace-custom-popup">
-                        <div style={{ padding: '0.4rem', maxWidth: '280px', color: '#f1f5f9' }}>
+                        <div style={{ padding: '0.4rem', maxWidth: '280px', color: '#172033' }}>
                           {/* Provenance Pill */}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                             <span
@@ -665,12 +677,12 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                                 fontWeight: 700,
                                 padding: '0.15rem 0.45rem',
                                 borderRadius: '4px',
-                                background: isLive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(148, 163, 184, 0.15)',
-                                color: isLive ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-                                border: `1px solid ${isLive ? 'rgba(56, 189, 248, 0.4)' : 'var(--border-subtle)'}`
+                                background: isLive ? '#e0f2fe' : isSynthetic ? '#fffbeb' : '#f1f5f9',
+                                color: isLive ? '#075985' : isSynthetic ? '#92400e' : '#475569',
+                                border: `1px solid ${isLive ? '#7dd3fc' : isSynthetic ? '#fcd34d' : '#cbd5e1'}`
                               }}
                             >
-                              {isLive ? 'LIVE OFFICIAL FEED' : 'DEMONSTRATION SCENARIO'}
+                              {isLive ? 'LIVE SOURCE RECORD' : isSynthetic ? 'DEMO / SYNTHETIC' : 'PROVENANCE UNKNOWN'}
                             </span>
                             <span
                               style={{
@@ -680,7 +692,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                                 padding: '0.15rem 0.45rem',
                                 borderRadius: '4px',
                                 background: sevConfig.bg,
-                                color: sevConfig.color,
+                                color: getSeverityTextColor(incident.severity),
                                 border: `1px solid ${sevConfig.border}`
                               }}
                             >
@@ -689,29 +701,29 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                           </div>
 
                           {/* Title */}
-                          <h4 style={{ fontSize: '0.88rem', fontWeight: 600, color: '#ffffff', lineHeight: 1.35, marginBottom: '0.35rem' }}>
+                          <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#172033', lineHeight: 1.4, marginBottom: '0.35rem' }}>
                             {incident.title}
                           </h4>
 
                           {/* Location & Coordinates */}
-                          <p style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.25rem' }}>
-                            <MapPin size={12} style={{ color: 'var(--accent-cyan)' }} />
+                          <p style={{ fontSize: '0.78rem', color: '#334155', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.25rem' }}>
+                            <MapPin size={13} style={{ color: '#0369a1' }} />
                             <span>{incident.geographicInfo?.locationName || 'Location documented'}</span>
                           </p>
-                          <p style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}>
+                          <p style={{ fontSize: '0.75rem', color: '#475569', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}>
                             {formatCoordinates(incident.geographicInfo?.coordinates)}
                             {radiusKm ? ` · Radius: ${radiusKm}km` : ''}
                           </p>
 
                           {/* Description excerpt */}
-                          <p style={{ fontSize: '0.76rem', color: '#cbd5e1', lineHeight: 1.45, marginBottom: '0.5rem' }}>
+                          <p style={{ fontSize: '0.8rem', color: '#334155', lineHeight: 1.5, marginBottom: '0.5rem' }}>
                             {incident.description?.length > 140
                               ? `${incident.description.slice(0, 140)}...`
                               : incident.description}
                           </p>
 
                           {/* Timestamps */}
-                          <div style={{ fontSize: '0.7rem', color: '#64748b', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.4rem', marginBottom: '0.4rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#475569', borderTop: '1px solid #e2e8f0', paddingTop: '0.4rem', marginBottom: '0.4rem' }}>
                             {incident.eventOccurredAt && (
                               <div>Occurred: {new Date(incident.eventOccurredAt).toUTCString()}</div>
                             )}
@@ -720,13 +732,13 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
 
                           {/* Source Link */}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                            <span style={{ color: '#94a3b8' }}>{incident.sourceName}</span>
+                            <span style={{ color: '#475569' }}>{incident.sourceName}</span>
                             {incident.sourceUrl && (
                               <a
                                 href={incident.sourceUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                style={{ color: 'var(--accent-cyan)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                style={{ color: '#0369a1', fontWeight: 600, textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                               >
                                 <span>Report</span>
                                 <ExternalLink size={10} />
@@ -747,19 +759,33 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
             <div className="geo-map-empty-overlay">
               <AlertTriangle size={20} style={{ color: 'var(--accent-amber)' }} />
               <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '0.35rem' }}>
-                No Mapped Incidents Available
+                {error
+                  ? 'Incident Feed Unavailable'
+                  : incidents.length === 0
+                  ? 'No Incident Records Loaded'
+                  : filteredIncidents.length === 0
+                  ? 'No Incidents Match These Filters'
+                  : 'No Mapped Incidents Available'}
               </p>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', maxWidth: '280px', marginTop: '0.25rem' }}>
-                No records match your active filters or contain explicit geographic coordinates. Coordinates are never fabricated.
+                {error
+                  ? 'Check that the incident API is running, then refresh the map.'
+                  : incidents.length === 0
+                  ? 'For labeled DEMO records, run `npm run seed` from the repository root. For live feeds, run `npm run ingest:usgs` with internet access.'
+                  : filteredIncidents.length === 0
+                  ? 'No incident records match the selected filters. Reset the filters to see all available incidents.'
+                  : 'Matching reports are still listed in the incident feed, but none contain valid stored coordinates. The map never fabricates locations.'}
               </p>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={handleResetFilters}
-                style={{ marginTop: '0.65rem', padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
-              >
-                Reset Filters
-              </button>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleResetFilters}
+                  style={{ marginTop: '0.65rem', padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                >
+                  Reset Filters
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -778,13 +804,19 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
           <div className="geo-registry-list">
             {filteredIncidents.length === 0 ? (
               <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                No incident reports found matching current filters.
+                {error
+                  ? 'Incident reports could not be loaded. Check the API connection.'
+                  : incidents.length === 0
+                  ? 'No incident records are stored. Run `npm run seed` at the repository root for DEMO records, or `npm run ingest:usgs` for live feed records.'
+                  : 'No incident reports match the current filters. Reset filters to view available records.'}
               </div>
             ) : (
               filteredIncidents.map((incident) => {
                 const hasCoords = isValidCoordinate(incident.geographicInfo?.coordinates);
                 const isSelected = incident._id === selectedIncidentId;
-                const isLive = !incident.isSynthetic;
+                const provenance = getIncidentProvenance(incident);
+                const isLive = provenance === 'live';
+                const isSynthetic = provenance === 'synthetic';
                 const sevConfig = getSeverityConfig(incident.severity);
 
                 return (
@@ -805,11 +837,11 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                           fontWeight: 700,
                           padding: '0.12rem 0.4rem',
                           borderRadius: '3px',
-                          background: isLive ? 'rgba(56, 189, 248, 0.12)' : 'rgba(148, 163, 184, 0.12)',
-                          color: isLive ? 'var(--accent-cyan)' : 'var(--text-secondary)'
+                          background: isLive ? '#e0f2fe' : isSynthetic ? '#fffbeb' : '#f1f5f9',
+                          color: isLive ? '#075985' : isSynthetic ? '#92400e' : '#475569'
                         }}
                       >
-                        {isLive ? 'LIVE FEED' : 'DEMO'}
+                        {isLive ? 'LIVE SOURCE' : isSynthetic ? 'DEMO / SYNTHETIC' : 'PROVENANCE UNKNOWN'}
                       </span>
 
                       <span
@@ -817,7 +849,7 @@ export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
                           fontSize: '0.65rem',
                           fontWeight: 600,
                           textTransform: 'uppercase',
-                          color: sevConfig.color
+                          color: getSeverityTextColor(incident.severity)
                         }}
                       >
                         {sevConfig.label}

@@ -35,7 +35,7 @@ export const mapGdacsSeverity = (alertlevel) => {
  * Maps GDACS event type codes to IncidentReport eventType enum
  */
 export const mapGdacsEventType = (eventtype) => {
-  if (!eventtype) return 'severe_weather';
+  if (!eventtype) return 'other';
   const type = String(eventtype).toUpperCase();
   switch (type) {
     case 'FL':
@@ -50,7 +50,7 @@ export const mapGdacsEventType = (eventtype) => {
     case 'LS':
       return 'landslide';
     default:
-      return 'severe_weather';
+      return 'other';
   }
 };
 
@@ -87,10 +87,7 @@ export const normalizeFeature = (item, retrievedAt = new Date()) => {
     props.title ||
     `[GDACS] ${alertLevel} Alert: ${eventType.toUpperCase()} Event #${eventId}`;
 
-  const description =
-    props.description ||
-    props.htmldescription ||
-    `${alertLevel} alert issued by GDACS for ${eventType} in ${props.country || 'impacted region'}.`;
+  const description = props.description || props.htmldescription || title;
 
   // Coordinates extraction
   let latitude = null;
@@ -117,14 +114,16 @@ export const normalizeFeature = (item, retrievedAt = new Date()) => {
     longitude >= -180 &&
     longitude <= 180;
 
-  const publishedAt = props.fromdate || props.date || props.publishedAt
-    ? new Date(props.fromdate || props.date || props.publishedAt)
-    : new Date();
-
-  const resolvedUrl =
-    typeof props.url === 'string'
-      ? props.url
-      : (props.url?.report || props.url?.details || `https://www.gdacs.org/report.aspx?eventid=${eventId}`);
+  const publishedValue = props.publishedAt || props.pubdate || props.updated || null;
+  const occurredValue = props.fromdate || props.date || null;
+  const publishedAt = publishedValue && Number.isFinite(new Date(publishedValue).getTime())
+    ? new Date(publishedValue)
+    : null;
+  const eventOccurredAt = occurredValue && Number.isFinite(new Date(occurredValue).getTime())
+    ? new Date(occurredValue)
+    : null;
+  const rawUrl = typeof props.url === 'string' ? props.url : (props.url?.report || props.url?.details || null);
+  const resolvedUrl = typeof rawUrl === 'string' && /^https?:\/\//i.test(rawUrl) ? rawUrl : null;
 
   return {
     sourceReportId: `GDACS-${eventId}`,
@@ -144,8 +143,8 @@ export const normalizeFeature = (item, retrievedAt = new Date()) => {
       affectedAreaDescription: props.country ? `Monitored emergency area in ${props.country}` : null
     },
     publishedAt,
-    updatedAtSource: props.todate ? new Date(props.todate) : publishedAt,
-    eventOccurredAt: publishedAt,
+    updatedAtSource: props.updated && Number.isFinite(new Date(props.updated).getTime()) ? new Date(props.updated) : null,
+    eventOccurredAt,
     retrievedAt,
     rawPayload: {
       eventId,
@@ -158,7 +157,8 @@ export const normalizeFeature = (item, retrievedAt = new Date()) => {
 };
 
 /**
- * Fetches the GDACS feed via HTTP with fallback to curated live baseline events
+ * Fetches the GDACS feed. A failed fetch remains a failed fetch; it is never
+ * replaced with fabricated records labeled as official GDACS data.
  */
 export const fetchFeed = async (options = {}) => {
   const feedUrl = options.feedUrl || config.gdacsFeedUrl;
@@ -190,57 +190,7 @@ export const fetchFeed = async (options = {}) => {
     return [];
   } catch (err) {
     clearTimeout(timer);
-    // When offline or in restricted sandbox, return authoritative GDACS benchmark events
-    return [
-      {
-        eventid: '1000941',
-        eventtype: 'FL',
-        alertlevel: 'Red',
-        name: 'Teesta River Basin Severe Inundation Alert',
-        country: 'India',
-        description: 'Severe flood warning active for West Bengal and Assam river corridors following torrential monsoon precipitation. Multiple river gauges exceeding critical danger levels.',
-        fromdate: new Date(Date.now() - 3600000 * 4).toISOString(),
-        latitude: 26.54,
-        longitude: 88.72,
-        url: 'https://www.gdacs.org/report.aspx?eventid=1000941'
-      },
-      {
-        eventid: '1000942',
-        eventtype: 'TC',
-        alertlevel: 'Orange',
-        name: 'Tropical Cyclone Sagar Bay of Bengal Advisory',
-        country: 'India',
-        description: 'Cyclonic storm tracking over west-central Bay of Bengal. Stand-down issued for northern coastal sectors as system recurves eastward.',
-        fromdate: new Date(Date.now() - 3600000 * 8).toISOString(),
-        latitude: 20.31,
-        longitude: 86.61,
-        url: 'https://www.gdacs.org/report.aspx?eventid=1000942'
-      },
-      {
-        eventid: '1000943',
-        eventtype: 'EQ',
-        alertlevel: 'Green',
-        name: 'M 5.4 Chamoli Seismic Advisory',
-        country: 'India',
-        description: 'Moderate seismic event registered at 10km depth in Garhwal Himalaya. Light ground shaking recorded; no widespread structural collapses.',
-        fromdate: new Date(Date.now() - 3600000 * 12).toISOString(),
-        latitude: 30.29,
-        longitude: 79.52,
-        url: 'https://www.gdacs.org/report.aspx?eventid=1000943'
-      },
-      {
-        eventid: '1000944',
-        eventtype: 'WF',
-        alertlevel: 'Orange',
-        name: 'Himalayan Foothills Forest Fire Alert',
-        country: 'India',
-        description: 'Wildfire activity active in pine forest tracts across Himachal lower ranges. State forest dept deployed rapid containment teams.',
-        fromdate: new Date(Date.now() - 3600000 * 16).toISOString(),
-        latitude: 31.10,
-        longitude: 77.17,
-        url: 'https://www.gdacs.org/report.aspx?eventid=1000944'
-      }
-    ];
+    throw new Error(`GDACS feed unavailable: ${err.message}`, { cause: err });
   }
 };
 

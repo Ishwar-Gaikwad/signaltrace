@@ -349,7 +349,7 @@ export const syntheticClaims = [
     sourcePlatform: 'whatsapp',
     authorId: null, // forwarded message with no traceable author
     authorDisplayName: null,
-    publishedAt: new Date('2026-10-20T16:30:00.000Z'), // Published hours after 14:00 stand-down bulletin
+    publishedAt: new Date('2026-10-20T12:30:00.000Z'), // Published before the 14:00 stand-down bulletin
     claimedLocation: {
       rawText: 'Paradip Port, Odisha',
       city: 'Paradip',
@@ -365,7 +365,7 @@ export const syntheticClaims = [
         predicate: 'is currently active',
         object: 'Paradip coast',
         claimedLocation: { city: 'Paradip', region: 'Odisha' },
-        claimedTimestamp: new Date('2026-10-20T16:30:00.000Z')
+        claimedTimestamp: new Date('2026-10-20T12:30:00.000Z')
       }
     ],
     processingStatus: 'completed',
@@ -614,7 +614,7 @@ export const syntheticEvidence = [
       notes: 'Direct match for Paradip Port coastal sector.'
     },
     explanation:
-      'Bulletin 06 (14:00 UTC) explicitly cancelled the mandatory evacuation order that was in effect under Bulletin 03 (06:00 UTC). The claim was published at 16:30 UTC — after the cancellation — making its assertion that the evacuation is currently active outdated and incorrect.',
+      'Bulletin 06 (14:00 UTC) explicitly cancelled the mandatory evacuation order that was in effect under Bulletin 03 (06:00 UTC). The claim was published at 12:30 UTC — before the cancellation — so the later bulletin makes its current-active assertion outdated.',
     isSynthetic: true
   },
 

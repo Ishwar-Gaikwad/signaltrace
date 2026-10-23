@@ -23,30 +23,31 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
   const hasConflicting = verificationResults.some((r) => r.verificationStatus === 'Conflicting');
   const hasOutdated = verificationResults.some((r) => r.verificationStatus === 'Outdated');
   const hasVerified = verificationResults.some((r) => r.verificationStatus === 'Verified');
+  const hasDemoData = claim?.isSynthetic === true || verificationResults.some((r) => r.evidenceSummary?.some((ev) => ev.isSynthetic));
 
   let statusLabel = 'UNVERIFIED';
-  let badgeColor = '#94a3b8';
-  let badgeBg = '#1e293b';
-  let badgeBorder = '#475569';
+  let badgeColor = '#475569';
+  let badgeBg = '#f1f5f9';
+  let badgeBorder = '#94a3b8';
   let iconText = 'ℹ️';
 
   if (hasConflicting) {
     statusLabel = 'DEBUNKED / CONFLICTING';
-    badgeColor = '#fb7185';
-    badgeBg = 'rgba(244, 63, 94, 0.2)';
-    badgeBorder = '#f43f5e';
+    badgeColor = '#be123c';
+    badgeBg = '#fff1f2';
+    badgeBorder = '#e11d48';
     iconText = '❌';
   } else if (hasOutdated) {
     statusLabel = 'OUTDATED / SUPERSEDED';
-    badgeColor = '#fbbf24';
-    badgeBg = 'rgba(245, 158, 11, 0.2)';
-    badgeBorder = '#f59e0b';
+    badgeColor = '#a16207';
+    badgeBg = '#fffbeb';
+    badgeBorder = '#d97706';
     iconText = '⚠️';
   } else if (hasVerified) {
-    statusLabel = 'VERIFIED BY OFFICIAL SOURCES';
-    badgeColor = '#34d399';
-    badgeBg = 'rgba(52, 211, 153, 0.2)';
-    badgeBorder = '#10b981';
+    statusLabel = 'SUPPORTED BY LINKED REPORTS';
+    badgeColor = '#047857';
+    badgeBg = '#ecfdf5';
+    badgeBorder = '#059669';
     iconText = '✅';
   }
 
@@ -64,9 +65,9 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
 
     // 1. Background
     const bgGradient = ctx.createLinearGradient(0, 0, width, height);
-    bgGradient.addColorStop(0, '#040711');
-    bgGradient.addColorStop(0.5, '#071026');
-    bgGradient.addColorStop(1, '#02050b');
+    bgGradient.addColorStop(0, '#ffffff');
+    bgGradient.addColorStop(0.5, '#f4f8fc');
+    bgGradient.addColorStop(1, '#eaf2f9');
     ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, width, height);
 
@@ -76,7 +77,7 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
     ctx.strokeRect(3, 3, width - 6, height - 6);
 
     // Subtle inner grid lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.strokeStyle = 'rgba(71, 85, 105, 0.045)';
     ctx.lineWidth = 1;
     for (let x = 60; x < width; x += 60) {
       ctx.beginPath();
@@ -96,13 +97,13 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
     ctx.fillRect(0, 0, width, 14);
 
     // Agency & Platform Brand
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('SIGNALTRACE — DISASTER EMERGENCY FACT-CHECK BULLETIN', 50, 58);
+    ctx.fillStyle = '#0369a1';
+    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(`SIGNALTRACE — ${hasDemoData ? 'DEMO VERIFICATION SUMMARY' : 'VERIFICATION SUMMARY'}`, 50, 58);
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(`INCIDENT REF: #ST-${claimId}   |   VERIFIED: ${timestamp}`, 50, 85);
+    ctx.fillStyle = '#526176';
+    ctx.font = '19px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(`CLAIM REF: #ST-${claimId}   |   GENERATED: ${timestamp}`, 50, 85);
 
     // 3. Status Badge Box
     ctx.fillStyle = badgeBg;
@@ -112,34 +113,34 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
     ctx.strokeRect(50, 115, 1100, 75);
 
     ctx.fillStyle = badgeColor;
-    ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText(`${iconText}  ${statusLabel}`, 75, 163);
 
     // 4. Viral Social Claim Box
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(50, 215, 1100, 135);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.24)';
     ctx.lineWidth = 1;
     ctx.strokeRect(50, 215, 1100, 135);
 
-    ctx.fillStyle = '#f87171';
-    ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#be123c';
+    ctx.font = 'bold 19px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText('VIRAL SOCIAL MEDIA CLAIM / FORWARDED REPORT:', 75, 245);
 
-    ctx.fillStyle = '#f1f5f9';
-    ctx.font = 'italic 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    wrapText(ctx, `"${claimText}"`, 75, 280, 1050, 28);
+    ctx.fillStyle = '#172033';
+    ctx.font = 'italic 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    wrapText(ctx, `"${claimText}"`, 75, 286, 1050, 32);
 
-    // 5. Official Ground Reality / Verdict Explanation
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.06)';
+    // 5. Linked source report explanation
+    ctx.fillStyle = '#eff8ff';
     ctx.fillRect(50, 375, 1100, 165);
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+    ctx.strokeStyle = 'rgba(2, 132, 199, 0.28)';
     ctx.lineWidth = 1;
     ctx.strokeRect(50, 375, 1100, 165);
 
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('OFFICIAL GROUND REALITY (GROUNDED IN USGS • GDACS • NDMA BULLETINS):', 75, 408);
+    ctx.fillStyle = '#0369a1';
+    ctx.font = 'bold 19px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(hasDemoData ? 'DEMO SOURCE COMPARISON — NOT A LIVE ALERT:' : 'LINKED SOURCE REPORT COMPARISON:', 75, 408);
 
     // Find primary explanation or summarize results
     const primaryResult =
@@ -150,25 +151,25 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
 
     const factText =
       primaryResult?.verificationExplanation ||
-      'Cross-examination against national disaster databases and live monitoring feeds shows no authoritative confirmation.';
+      'No matching source report is linked to this claim in the stored records.';
 
-    ctx.fillStyle = '#cbd5e1';
-    ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    wrapText(ctx, factText, 75, 442, 1050, 26);
+    ctx.fillStyle = '#334155';
+    ctx.font = '23px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    wrapText(ctx, factText, 75, 448, 1050, 31);
 
     // 6. Bottom Emergency Strip
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#f1f5f9';
     ctx.fillRect(50, 560, 1100, 68);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.24)';
     ctx.lineWidth = 1;
     ctx.strokeRect(50, 560, 1100, 68);
 
     ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText('⚠️ CITIZEN SAFETY INSTRUCTION:', 75, 588);
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#526176';
+    ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText(
       'Do not forward unverified disaster alerts. In an emergency dial: 112 (National Emergency) | 1078 (Disaster Response) | 108 (Ambulance)',
       75,
@@ -246,7 +247,7 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        backgroundColor: 'rgba(15, 23, 42, 0.42)',
         backdropFilter: 'blur(8px)',
         zIndex: 10000,
         display: 'flex',
@@ -258,15 +259,15 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
     >
       <div
         style={{
-          background: '#070d19',
-          border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.15))',
+          background: '#ffffff',
+          border: '1px solid var(--border-subtle, rgba(100, 116, 139, 0.2))',
           borderRadius: '16px',
-          width: '900px',
+          width: '1000px',
           maxWidth: '96vw',
           maxHeight: '92vh',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 35px rgba(244, 63, 94, 0.15)',
+          boxShadow: '0 25px 60px rgba(15, 23, 42, 0.2), 0 0 35px rgba(244, 63, 94, 0.08)',
           overflow: 'hidden'
         }}
         onClick={(e) => e.stopPropagation()}
@@ -275,11 +276,11 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
         <div
           style={{
             padding: '1rem 1.4rem',
-            borderBottom: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))',
+            borderBottom: '1px solid var(--border-subtle, rgba(100, 116, 139, 0.18))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'rgba(255, 255, 255, 0.02)'
+            background: '#f8fafc'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
@@ -299,10 +300,10 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
               <Share2 size={16} />
             </div>
             <div>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary, #172033)' }}>
                 Shareable Disaster Debunk Card
               </h2>
-              <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted, #94a3b8)' }}>
+              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-muted, #718096)' }}>
                 High-contrast social media bulletin for Twitter, Instagram, and WhatsApp Status
               </p>
             </div>
@@ -331,7 +332,7 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            background: '#040711',
+            background: '#f1f5f9',
             overflowY: 'auto',
             flex: 1
           }}
@@ -340,11 +341,11 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
             ref={canvasRef}
             style={{
               width: '100%',
-              maxWidth: '820px',
+              maxWidth: '900px',
               height: 'auto',
               borderRadius: '10px',
-              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7)',
-              border: '1px solid rgba(255, 255, 255, 0.1)'
+              boxShadow: '0 8px 30px rgba(15, 23, 42, 0.12)',
+              border: '1px solid rgba(100, 116, 139, 0.24)'
             }}
           />
         </div>
@@ -353,14 +354,14 @@ export const DebunkCardModal = ({ isOpen, onClose, claim, verificationResults = 
         <div
           style={{
             padding: '0.9rem 1.4rem',
-            borderTop: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))',
+            borderTop: '1px solid var(--border-subtle, rgba(100, 116, 139, 0.18))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'rgba(255, 255, 255, 0.01)'
+            background: '#ffffff'
           }}
         >
-          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted, #94a3b8)' }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted, #718096)' }}>
             Rendered at 1200×675 px (16:9 HD standard social format)
           </div>
 

@@ -23,7 +23,7 @@ export const validateEnv = () => {
 
   const mongodbUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/verialert';
   if (!mongodbUri.startsWith('mongodb://') && !mongodbUri.startsWith('mongodb+srv://')) {
-    errors.push(`MONGODB_URI must start with "mongodb://" or "mongodb+srv://". Received: "${mongodbUri}"`);
+    errors.push('MONGODB_URI must start with "mongodb://" or "mongodb+srv://". The configured value is omitted from logs.');
   }
 
   if (errors.length > 0) {

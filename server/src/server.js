@@ -24,7 +24,7 @@ const startServer = async () => {
     validateEnv();
 
     // 2. Connect to MongoDB before accepting traffic
-    console.log(`[Startup] Connecting to MongoDB (${config.mongodbUri})...`);
+    console.log('[Startup] Connecting to MongoDB...');
     await connectDB();
 
     // 3. Start Express HTTP Server
@@ -60,7 +60,7 @@ const startServer = async () => {
 
     return server;
   } catch (error) {
-    console.error('[Startup Error] Failed to start server:', error.message);
+    console.error(`[Startup Error] Failed to start server (${error.name || 'UnknownError'}).`);
     process.exit(1);
   }
 };

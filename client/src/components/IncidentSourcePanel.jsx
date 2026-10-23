@@ -120,9 +120,9 @@ export const IncidentSourcePanel = () => {
             <ShieldAlert size={20} />
           </div>
           <div>
-            <h2 className="card-title">Official Reports & Alerts</h2>
+            <h2 className="card-title">Incident Reports & Alerts</h2>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Official emergency bulletins, geological alerts, and reference records used to verify statements
+              Live agency records and clearly labeled synthetic demonstration reports
             </p>
           </div>
         </div>
@@ -191,7 +191,7 @@ export const IncidentSourcePanel = () => {
             value={selectedEventType}
             onChange={(e) => setSelectedEventType(e.target.value)}
             style={{
-              background: '#090e1b',
+              background: '#f8fafc',
               color: 'var(--text-primary)',
               border: '1px solid var(--border-subtle)',
               borderRadius: 'var(--radius-sm)',
@@ -463,7 +463,7 @@ export const IncidentSourcePanel = () => {
         >
           <Info size={14} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
           <span>
-            <strong>Official Records Notice:</strong> Verified emergency bulletins and example scenarios stored in SignalTrace are used to cross-reference statements.
+            <strong>Source records notice:</strong> Live records and synthetic examples are identified separately; demo examples are not live alerts.
             This repository indexes verified agency bulletins and does not claim comprehensive coverage of all global crisis events.
           </span>
         </div>

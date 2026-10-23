@@ -8,7 +8,7 @@ export const getHealthMetrics = () => {
   const dbStatus = getDatabaseStatus();
 
   return {
-    status: 'healthy',
+    status: dbStatus.status === 'connected' ? 'healthy' : 'degraded',
     service: 'SignalTrace — VeriAlert API',
     version: '1.0.0',
     environment: config.nodeEnv,

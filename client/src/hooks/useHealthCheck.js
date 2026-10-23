@@ -20,8 +20,12 @@ export const useHealthCheck = (pollIntervalMs = 0) => {
 
     try {
       const result = await fetchHealth(5000);
-      setStatus('connected');
       setData(result.data);
+      const healthy = result.data?.status === 'healthy' && result.data?.database?.status === 'connected';
+      setStatus(healthy ? 'connected' : 'disconnected');
+      if (!healthy) {
+        setError(`Backend is responding, but database status is ${result.data?.database?.status || 'unknown'}.`);
+      }
       setRaw(result.raw);
       setLatencyMs(result.latencyMs);
       setEndpoint(result.endpoint);

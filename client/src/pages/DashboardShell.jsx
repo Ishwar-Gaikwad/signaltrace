@@ -53,12 +53,12 @@ export const DashboardShell = ({ healthState }) => {
   const checkLiveStats = async () => {
     try {
       const res = await fetchIncidents({ isSynthetic: 'false', limit: 1 });
-      const totalLive = res.meta?.total || 0;
-      const latest = res.data?.[0];
+      const totalLive = res.meta?.totalRecords || 0;
+      const latest = res.incidents?.[0];
       setLiveIncidentStats({
         checked: true,
         count: totalLive,
-        latestTime: latest ? (latest.sourcePublishedAt || latest.createdAt) : null,
+        latestTime: latest ? (latest.publishedAt || latest.createdAt) : null,
         error: null
       });
     } catch (err) {

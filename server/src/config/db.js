@@ -31,8 +31,8 @@ export const connectDB = async (customUri = null) => {
     }
     return conn;
   } catch (error) {
-    console.error(`[Database Error] Failed to connect to MongoDB at "${uri}":`);
-    console.error(`Reason: ${error.message}`);
+    console.error('[Database Error] Failed to connect to the configured MongoDB instance.');
+    console.error(`[Database Error] Failure type: ${error.name || 'UnknownError'}`);
     if (config.nodeEnv !== 'test') {
       console.error('[Database Error] Terminating server process (exit code 1)...');
       process.exit(1);

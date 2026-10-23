@@ -24,6 +24,8 @@ describe('Phase 2 — Incident Reports Read-Only API Endpoints', () => {
       expect(res.body).toHaveProperty('data');
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(res.body.data.length).toBeLessThanOrEqual(4);
+      expect(res.body.data[0]).toHaveProperty('geographicInfo.coordinates.latitude');
+      expect(res.body.data[0]).toHaveProperty('geographicInfo.coordinates.longitude');
 
       expect(res.body).toHaveProperty('meta');
       const { meta } = res.body;
@@ -64,6 +66,23 @@ describe('Phase 2 — Incident Reports Read-Only API Endpoints', () => {
       res.body.data.forEach((incident) => {
         expect(incident.severity).toBe('severe');
       });
+    });
+
+    it('should return an empty list and zero count when filters match no incidents', async () => {
+      const res = await request(app).get('/api/incidents?eventType=not-a-hazard');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual([]);
+      expect(res.body.meta.totalRecords).toBe(0);
+    });
+
+    it('should preserve synthetic provenance in API records', async () => {
+      const res = await request(app).get('/api/incidents?isSynthetic=true&limit=10');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.length).toBeGreaterThan(0);
+      expect(res.body.data.every((incident) => incident.isSynthetic === true)).toBe(true);
     });
 
     it('should return 400 when invalid pagination parameters are passed', async () => {

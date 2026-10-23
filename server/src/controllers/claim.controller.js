@@ -71,6 +71,8 @@ export const extractClaim = async (req, res, next) => {
     // 2. Create parent Claim record with initial processing status
     createdClaim = await Claim.create({
       originalText: validatedText,
+      // Demo provenance is explicit and only set by the application's demo preset marker.
+      isSynthetic: typeof sourcePlatform === 'string' && sourcePlatform.trim().toLowerCase() === 'synthetic-demo',
       sourcePlatform:
         typeof sourcePlatform === 'string' && sourcePlatform.trim()
           ? sourcePlatform.trim().toLowerCase()

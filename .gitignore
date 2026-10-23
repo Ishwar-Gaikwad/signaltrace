@@ -45,3 +45,6 @@ Thumbs.db
 .eslintcache
 .parcel-cache
 .turbo
+
+# Local audit database
+.audit-mongodb/

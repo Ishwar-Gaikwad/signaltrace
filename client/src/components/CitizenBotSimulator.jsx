@@ -190,7 +190,7 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
             flexDirection: 'column',
             borderRadius: '16px',
             overflow: 'hidden',
-            background: '#0b1320',
+            background: '#ffffff',
             border: '1px solid rgba(16, 185, 129, 0.3)',
             boxShadow: '0 20px 45px rgba(0, 0, 0, 0.75), 0 0 25px rgba(16, 185, 129, 0.15)',
             fontFamily: 'var(--font-sans, system-ui, sans-serif)'
@@ -239,7 +239,7 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
                     112 / 1078
                   </span>
                 </div>
-                <div style={{ fontSize: '0.68rem', color: 'rgba(255, 255, 255, 0.8)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ fontSize: '0.68rem', color: 'rgba(255, 255, 255, 0.88)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#34d399', display: 'inline-block' }}></span>
                   <span>Active Grounding (USGS • GDACS • NDMA)</span>
                 </div>
@@ -284,7 +284,7 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
           <div
             style={{
               padding: '0.4rem 0.85rem',
-              background: '#040711',
+              background: '#f1f5f9',
               borderBottom: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
               display: 'flex',
               alignItems: 'center',
@@ -373,7 +373,7 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
               display: 'flex',
               flexDirection: 'column',
               gap: '0.75rem',
-              background: '#070d19'
+              background: '#f8fafc'
             }}
           >
             {messages.map((msg, idx) => (
@@ -394,9 +394,9 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
                     background:
                       msg.sender === 'user'
                         ? '#056162'
-                        : '#111c30',
-                    border: msg.sender === 'user' ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
-                    color: '#f8fafc',
+                        : '#e2e8f0',
+                    border: msg.sender === 'user' ? 'none' : '1px solid rgba(100, 116, 139, 0.18)',
+                    color: msg.sender === 'user' ? '#ffffff' : '#172033',
                     fontSize: '0.77rem',
                     lineHeight: 1.5,
                     whiteSpace: 'pre-wrap',
@@ -451,7 +451,7 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
                   alignItems: 'center',
                   gap: '0.5rem',
                   padding: '0.6rem 0.85rem',
-                  background: '#111c30',
+                  background: '#e2e8f0',
                   borderRadius: '12px 12px 12px 2px',
                   maxWidth: '85%',
                   fontSize: '0.74rem',
@@ -474,8 +474,8 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
             }}
             style={{
               padding: '0.65rem 0.85rem',
-              background: '#0b1320',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              background: '#ffffff',
+              borderTop: '1px solid rgba(100, 116, 139, 0.2)',
               display: 'flex',
               gap: '0.5rem',
               alignItems: 'center'
@@ -491,9 +491,9 @@ Forward any suspicious WhatsApp forward, disaster rumor, or SMS alert here. I wi
                 flex: 1,
                 padding: '0.55rem 0.8rem',
                 borderRadius: '8px',
-                background: '#040711',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                color: '#f8fafc',
+                background: '#f1f5f9',
+                border: '1px solid rgba(100, 116, 139, 0.24)',
+                color: '#172033',
                 fontSize: '0.78rem',
                 outline: 'none'
               }}

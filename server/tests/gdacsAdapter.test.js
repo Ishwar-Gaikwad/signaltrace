@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   gdacsAdapter,
   mapGdacsSeverity,
@@ -22,7 +22,7 @@ describe('GDACS Multi-Hazard Disaster Feed Adapter', () => {
     expect(mapGdacsEventType('EQ')).toBe('earthquake');
     expect(mapGdacsEventType('WF')).toBe('wildfire');
     expect(mapGdacsEventType('LS')).toBe('landslide');
-    expect(mapGdacsEventType('UNKNOWN')).toBe('severe_weather');
+    expect(mapGdacsEventType('UNKNOWN')).toBe('other');
   });
 
   it('should validate feature id presence', () => {
@@ -32,18 +32,16 @@ describe('GDACS Multi-Hazard Disaster Feed Adapter', () => {
     expect(validateFeature({ properties: { eventid: '456' } }).valid).toBe(true);
   });
 
-  it('should normalize a GDACS flood event into IncidentReport schema', () => {
+  it('normalizes real source-shaped GDACS properties without inventing timestamps or URLs', () => {
     const raw = {
-      eventid: '999888',
-      eventtype: 'FL',
-      alertlevel: 'Red',
-      name: 'Brahmaputra Basin Flood Alert',
-      country: 'India',
-      description: 'Dangerous flooding in river floodplains',
-      fromdate: '2026-10-22T10:00:00.000Z',
-      latitude: 26.15,
-      longitude: 91.75,
-      url: 'https://www.gdacs.org/report.aspx?eventid=999888'
+      type: 'Feature',
+      properties: {
+        eventid: '999888', eventtype: 'FL', alertlevel: 'Red',
+        name: 'Brahmaputra Basin Flood Alert', country: 'India',
+        description: 'Dangerous flooding in river floodplains',
+        fromdate: '2026-10-22T10:00:00.000Z'
+      },
+      geometry: { type: 'Point', coordinates: [91.75, 26.15] }
     };
 
     const norm = normalizeFeature(raw);
@@ -54,12 +52,21 @@ describe('GDACS Multi-Hazard Disaster Feed Adapter', () => {
     expect(norm.geographicInfo.coordinates).toEqual({ latitude: 26.15, longitude: 91.75 });
     expect(norm.geographicInfo.country).toBe('India');
     expect(norm.isSynthetic).toBe(false);
-    expect(typeof norm.sourceUrl).toBe('string');
+    expect(norm.sourceUrl).toBeNull();
+    expect(norm.publishedAt).toBeNull();
+    expect(norm.eventOccurredAt).toEqual(new Date('2026-10-22T10:00:00.000Z'));
+    expect(norm.isSynthetic).toBe(false);
   });
 
-  it('should fetch feed items with graceful fallback handling', async () => {
-    const items = await gdacsAdapter.fetchFeed({ timeoutMs: 1500 });
-    expect(Array.isArray(items)).toBe(true);
-    expect(items.length).toBeGreaterThan(0);
+  it('returns real feed features and does not disguise offline fixtures as GDACS', async () => {
+    const feature = { type: 'Feature', properties: { eventid: '123' }, geometry: null };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ features: [feature] }) });
+    try {
+      await expect(gdacsAdapter.fetchFeed({ feedUrl: 'https://feed.example.test', timeoutMs: 1500 })).resolves.toEqual([feature]);
+      fetchMock.mockRejectedValueOnce(new Error('network offline'));
+      await expect(gdacsAdapter.fetchFeed({ feedUrl: 'https://feed.example.test', timeoutMs: 1500 })).rejects.toThrow(/GDACS feed unavailable/);
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });

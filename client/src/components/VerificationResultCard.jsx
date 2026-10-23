@@ -72,7 +72,7 @@ const EvidenceExcerpt = ({ excerpt }) => (
     style={{
       padding: '0.65rem 0.85rem',
       borderRadius: 'var(--radius-sm)',
-      background: 'rgba(255,255,255,0.02)',
+      background: 'rgba(15, 23, 42, 0.025)',
       border: '1px solid var(--border-subtle)',
       fontSize: '0.82rem'
     }}
@@ -100,23 +100,24 @@ const SingleAtomicVerification = ({ result, index }) => {
   const status = result.verificationStatus;
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.Unverified;
   const Icon = cfg.icon;
+  const demoEvidence = result.evidenceSummary?.some((ev) => ev.isSynthetic);
 
   const evidenceState = (() => {
     if (status === 'Conflicting') {
-      return { label: 'CONTRADICTS OFFICIAL REPORT', bg: 'rgba(251, 113, 133, 0.12)', color: 'var(--accent-rose)' };
+      return { label: 'CONTRADICTS LINKED REPORT', bg: 'rgba(251, 113, 133, 0.12)', color: 'var(--accent-rose)' };
     }
     if (status === 'Outdated') {
       return { label: 'SUPERSEDED BY NEWER UPDATE', bg: 'rgba(251, 191, 36, 0.12)', color: 'var(--accent-amber)' };
     }
     if (status === 'Verified') {
-      return { label: 'SUPPORTED BY OFFICIAL REPORT', bg: 'rgba(52, 211, 153, 0.12)', color: 'var(--accent-emerald)' };
+      return { label: 'SUPPORTED BY LINKED REPORT', bg: 'rgba(52, 211, 153, 0.12)', color: 'var(--accent-emerald)' };
     }
     if (status === 'Unverified') {
       const hasInsufficientDocs = result.evidenceSummary?.some((ev) => ev.role === 'insufficient');
       if (hasInsufficientDocs) {
         return { label: 'DETAILS NOT FOUND IN REPORT', bg: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-amber)' };
       }
-      return { label: 'NO MATCHING OFFICIAL RECORD', bg: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)' };
+      return { label: 'NO MATCHING REPORT', bg: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)' };
     }
     return null;
   })();
@@ -172,10 +173,10 @@ const SingleAtomicVerification = ({ result, index }) => {
                   borderRadius: 'var(--radius-sm)',
                   background: evidenceState.bg,
                   color: evidenceState.color,
-                  border: '1px solid rgba(255, 255, 255, 0.08)'
+                  border: '1px solid rgba(100, 116, 139, 0.18)'
                 }}
               >
-                {evidenceState.label}
+                {demoEvidence ? `DEMO · ${evidenceState.label}` : evidenceState.label}
               </span>
             )}
           </div>
@@ -241,7 +242,7 @@ const SingleAtomicVerification = ({ result, index }) => {
                     ? 'rgba(52, 211, 153, 0.12)'
                     : ev.role === 'contradicting'
                     ? 'rgba(251, 113, 133, 0.12)'
-                    : 'rgba(255, 255, 255, 0.05)',
+                    : 'rgba(15, 23, 42, 0.04)',
                   color: ev.role === 'supporting'
                     ? 'var(--accent-emerald)'
                     : ev.role === 'contradicting'
@@ -250,13 +251,12 @@ const SingleAtomicVerification = ({ result, index }) => {
                 }}>
                   {ev.role}
                 </span>
+                {ev.isSynthetic && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 'var(--radius-sm)', padding: '0.12rem 0.45rem' }}>DEMO SOURCE · NOT LIVE</span>}
 
                 {ev.geographicRelevance?.distanceKm != null && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                     <MapPin size={11} />
-                    {ev.geographicRelevance.distanceKm === 0
-                      ? 'Exact match'
-                      : `${ev.geographicRelevance.distanceKm} km from claim`}
+                    {ev.geographicRelevance.distanceKm} km spatial distance · proximity alone does not verify the claim
                   </span>
                 )}
               </div>
@@ -331,7 +331,7 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
       style={{
         marginTop: '1.5rem',
         borderColor: 'rgba(56, 189, 248, 0.2)',
-        background: 'rgba(14, 20, 35, 0.9)'
+        background: '#ffffff'
       }}
     >
       {/* Header with SitRep Export Button */}
@@ -343,7 +343,7 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
           <div>
             <h2 className="card-title">Verification Results</h2>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Cross-referenced against official disaster alerts and reports
+              Checked against stored source reports
             </p>
           </div>
         </div>
@@ -360,7 +360,7 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
               padding: '0.35rem 0.75rem',
               fontSize: '0.76rem',
               borderColor: 'rgba(244, 63, 94, 0.4)',
-              color: '#fb7185',
+              color: '#be123c',
               background: 'rgba(244, 63, 94, 0.08)'
             }}
             title="Generate Shareable Disaster Fact-Check Graphic for Twitter, WhatsApp Status, and Instagram"
@@ -433,9 +433,15 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
           }}
         >
           <Clock size={12} />
-          <span>Freshness: Authoritative Feed Synchronized</span>
+          <span>Stored evidence records</span>
         </span>
       </div>
+
+      {(claimData?.isSynthetic || enriched.some((r) => r.evidenceSummary?.some((ev) => ev.isSynthetic))) && (
+        <p role="note" style={{ margin: '0 0 1rem', padding: '0.65rem 0.8rem', borderRadius: 'var(--radius-sm)', background: '#fffbeb', border: '1px solid #fcd34d', color: '#78350f', fontSize: '0.82rem' }}>
+          Demonstration scenario: synthetic example data is shown here and must not be treated as a live alert or official report.
+        </p>
+      )}
 
       {/* Individual results */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
@@ -465,7 +471,7 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
         gap: '0.4rem'
       }}>
         <FileText size={12} />
-        Evidence checked against official alerts and reports. Report ID: {claimId?.slice(-8)}
+        Evidence linked from stored source reports. Report ID: {claimId?.slice(-8)}
       </p>
 
       {/* Stakeholder Actionable SitRep Export Modal */}
