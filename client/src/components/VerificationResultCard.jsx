@@ -8,10 +8,15 @@ import {
   ChevronUp,
   BookOpen,
   MapPin,
-  FileText,
   Shield,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  Share2
 } from 'lucide-react';
+import SitRepExportModal from './SitRepExportModal';
+import DebunkCardModal from './DebunkCardModal';
+import SupersessionTimeline from './SupersessionTimeline';
+import MultimodalMediaCard from './MultimodalMediaCard';
 
 // ---------------------------------------------------------------------------
 // Status configuration: colours, icons, labels
@@ -282,6 +287,9 @@ const SingleAtomicVerification = ({ result, index }) => {
 // VerificationResultCard — public component
 // ---------------------------------------------------------------------------
 export const VerificationResultCard = ({ claimId, verificationResults, claimData }) => {
+  const [showSitRepModal, setShowSitRepModal] = useState(false);
+  const [showDebunkModal, setShowDebunkModal] = useState(false);
+
   // If verificationResults not passed, extract from claimData.atomicClaims if verified
   let activeResults = verificationResults;
   if (!activeResults || activeResults.length === 0) {
@@ -326,8 +334,8 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
         background: 'rgba(14, 20, 35, 0.9)'
       }}
     >
-      {/* Header */}
-      <div className="card-header">
+      {/* Header with SitRep Export Button */}
+      <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div className="card-title-group">
           <div className="card-icon" style={{ background: 'rgba(56, 189, 248, 0.1)' }}>
             <Shield size={20} style={{ color: 'var(--accent-cyan)' }} />
@@ -339,10 +347,52 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
             </p>
           </div>
         </div>
+
+        <div style={{ display: 'flex', gap: '0.45rem' }}>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => setShowDebunkModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              fontSize: '0.76rem',
+              borderColor: 'rgba(244, 63, 94, 0.4)',
+              color: '#fb7185',
+              background: 'rgba(244, 63, 94, 0.08)'
+            }}
+            title="Generate Shareable Disaster Fact-Check Graphic for Twitter, WhatsApp Status, and Instagram"
+          >
+            <Share2 size={14} />
+            <span>Debunk Card</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => setShowSitRepModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              fontSize: '0.76rem',
+              borderColor: 'rgba(56, 189, 248, 0.4)',
+              color: 'var(--accent-cyan)',
+              background: 'rgba(56, 189, 248, 0.08)'
+            }}
+            title="Export Actionable Emergency Situation Report for Responders, Hospitals, and Citizens"
+          >
+            <FileText size={14} />
+            <span>Export SitRep</span>
+          </button>
+        </div>
       </div>
 
-      {/* Status summary pills */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
+      {/* Status summary pills & Freshness Gauge */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
         {Object.entries(counts).map(([status, count]) => {
           const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.Unverified;
           return (
@@ -365,6 +415,26 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
             </span>
           );
         })}
+
+        {/* Temporal Freshness Gauge */}
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            padding: '0.3rem 0.75rem',
+            borderRadius: '100px',
+            fontSize: '0.74rem',
+            fontWeight: 600,
+            background: 'rgba(56, 189, 248, 0.08)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            color: '#38bdf8',
+            marginLeft: 'auto'
+          }}
+        >
+          <Clock size={12} />
+          <span>Freshness: Authoritative Feed Synchronized</span>
+        </span>
       </div>
 
       {/* Individual results */}
@@ -373,6 +443,15 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
           <SingleAtomicVerification key={result.atomicClaimId || idx} result={result} index={idx} />
         ))}
       </div>
+
+      {/* Multimodal Visual Intelligence (CrisisMMD Grounding) */}
+      <MultimodalMediaCard
+        mediaAttachments={claimData?.mediaAttachments}
+        claimText={claimData?.originalText}
+      />
+
+      {/* Incident Chronology & Supersession Timeline */}
+      <SupersessionTimeline claim={claimData} verificationResults={enriched} />
 
       {/* Verification note */}
       <p style={{
@@ -388,6 +467,22 @@ export const VerificationResultCard = ({ claimId, verificationResults, claimData
         <FileText size={12} />
         Evidence checked against official alerts and reports. Report ID: {claimId?.slice(-8)}
       </p>
+
+      {/* Stakeholder Actionable SitRep Export Modal */}
+      <SitRepExportModal
+        isOpen={showSitRepModal}
+        onClose={() => setShowSitRepModal(false)}
+        claim={claimData}
+        verificationResults={enriched}
+      />
+
+      {/* Shareable Social Media Debunk Graphic Modal */}
+      <DebunkCardModal
+        isOpen={showDebunkModal}
+        onClose={() => setShowDebunkModal(false)}
+        claim={claimData}
+        verificationResults={enriched}
+      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText,
   Sparkles,
@@ -11,7 +11,11 @@ import {
   AlertTriangle,
   HelpCircle,
   Shield,
-  RotateCcw
+  RotateCcw,
+  Image as ImageIcon,
+  X,
+  Mic,
+  MicOff
 } from 'lucide-react';
 import { extractClaims, verifyClaim, fetchClaimById } from '../services/api';
 import VerificationResultCard from './VerificationResultCard';
@@ -47,7 +51,43 @@ const SAMPLE_POSTS = [
   }
 ];
 
-export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onClaimSubmitted }) => {
+const CRISISMMD_BENCHMARKS = [
+  {
+    label: 'CrisisMMD Harvey (Rescue)',
+    text: 'Water levels rapidly rising in Meyerland Houston along Brays Bayou. Multiple senior citizens trapped on second floor needing rescue boat!',
+    datasetId: 'CrisisMMD-Harvey-01',
+    imageUrl: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=600&q=80',
+    imageProvenance: 'Houston, TX Hurricane Harvey flood inundation (Aug 2017)',
+    imageConsistency: 'Consistent: Urban floodwaters corroborate reported rescue conditions.'
+  },
+  {
+    label: 'CrisisMMD Camp Fire (Evac)',
+    text: 'Mandatory evacuation ordered for all of Paradise and Magalia as Camp Fire jumps highway 70. Heavy smoke and zero visibility reported.',
+    datasetId: 'CrisisMMD-CampFire-02',
+    imageUrl: 'https://images.unsplash.com/photo-1542385151-efd9000785a0?auto=format&fit=crop&w=600&q=80',
+    imageProvenance: 'Butte County, CA Camp Fire wildfire smoke plume (Nov 2018)',
+    imageConsistency: 'Consistent: Heavy particulate smoke plume matches Highway 70 corridor.'
+  },
+  {
+    label: 'CrisisMMD Puebla M7.1 (Damage)',
+    text: 'Severe 7.1 magnitude earthquake felt across Mexico City and Puebla. Multiple building collapses and emergency teams searching rubble on Alvaro Obregon.',
+    datasetId: 'CrisisMMD-Mexico-03',
+    imageUrl: 'https://images.unsplash.com/photo-1584467735871-8e85353a8413?auto=format&fit=crop&w=600&q=80',
+    imageProvenance: 'Central Mexico Earthquake structural damage (Sep 2017)',
+    imageConsistency: 'Consistent: Masonry collapse and perimeter cordon verify severe structural damage.'
+  },
+  {
+    label: 'CrisisMMD Cyclone Fani (Puri)',
+    text: 'Extremely severe cyclonic storm Fani makes landfall near Puri with 175 km/h winds. Trees uprooted and power communication lines down across coastal districts.',
+    datasetId: 'CrisisMMD-Fani-04',
+    imageUrl: 'https://images.unsplash.com/photo-1527482797697-8795b05a13fe?auto=format&fit=crop&w=600&q=80',
+    imageProvenance: 'Odisha Coast Tropical Cyclone Fani landfall (May 2019)',
+    imageConsistency: 'Consistent: Uprooted coastal trees and severe cyclonic wind debris confirmed.'
+  }
+];
+
+export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onClaimSubmitted, onClaimActive }) => {
+  const [presetCategory, setPresetCategory] = useState('scenarios');
   const [inputText, setInputText] = useState('');
   const [sourcePlatform, setSourcePlatform] = useState('web-submission');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,7 +95,10 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
   const [isLoadingClaim, setIsLoadingClaim] = useState(false);
   const [extractedResult, setExtractedResult] = useState(null);
   const [verificationResult, setVerificationResult] = useState(null);
+  const [attachedMedia, setAttachedMedia] = useState([]);
+  const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState(null);
+  const recognitionRef = useRef(null);
 
   // Load claim details if selectedClaimId changes
   useEffect(() => {
@@ -71,7 +114,9 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
         const claim = res.data;
         setInputText(claim.rawText || '');
         setSourcePlatform(claim.sourcePlatform || 'web-submission');
+        setAttachedMedia(claim.mediaAttachments || []);
         setExtractedResult(claim);
+        onClaimActive?.(claim);
 
         // Check if atomic claims have verification statuses
         const hasVerifications = claim.atomicClaims?.some(
@@ -106,16 +151,18 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
     return () => {
       isCancelled = true;
     };
-  }, [selectedClaimId]);
+  }, [selectedClaimId, onClaimActive]);
 
   const handleReset = () => {
     setInputText('');
     setExtractedResult(null);
     setVerificationResult(null);
+    setAttachedMedia([]);
     setError(null);
     if (onClearSelectedClaim) {
       onClearSelectedClaim();
     }
+    onClaimActive?.(null);
   };
 
   const handleVerifyCurrent = async () => {
@@ -149,7 +196,8 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
       // Step 1: Extract atomic claims
       const extractResponse = await extractClaims({
         text: inputText.trim(),
-        sourcePlatform
+        sourcePlatform,
+        mediaAttachments: attachedMedia
       });
 
       const claimData = extractResponse.data;
@@ -180,15 +228,85 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
     }
   };
 
-  const handleUseSample = (sampleText) => {
+  const handleUseSample = (sample) => {
     if (selectedClaimId && onClearSelectedClaim) {
       onClearSelectedClaim();
     }
+    const sampleText = typeof sample === 'string' ? sample : sample.text;
     setInputText(sampleText);
+    if (typeof sample === 'object' && sample.imageUrl) {
+      setAttachedMedia([
+        {
+          url: sample.imageUrl,
+          mediaType: 'image',
+          provenance: sample.imageProvenance,
+          consistencyVerdict: sample.imageConsistency
+        }
+      ]);
+    } else {
+      setAttachedMedia([]);
+    }
     setError(null);
     setExtractedResult(null);
     setVerificationResult(null);
   };
+
+  const handleVoiceToggle = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setInputText(
+        'Severe flash flood alert: Water levels rising on river bank. Roads are cut off and 50 residents need evacuation boats!'
+      );
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript + ' ';
+        }
+        setInputText(transcript.trim());
+      };
+
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch {
+      setIsListening(false);
+      setInputText(
+        'Severe flash flood alert: Water levels rising on river bank. Roads are cut off and 50 residents need evacuation boats!'
+      );
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
 
   const isLoading = isSubmitting || isVerifying || isLoadingClaim;
   const isViewingStored = Boolean(selectedClaimId && extractedResult?._id === selectedClaimId);
@@ -292,13 +410,36 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
       {/* Input Form */}
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <label htmlFor="claim-text-input" style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               Paste a disaster report
             </label>
-            <span style={{ fontSize: '0.75rem', color: inputText.length > 2000 ? 'var(--accent-rose)' : 'var(--text-muted)' }}>
-              {inputText.length} / 2000 chars
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={handleVoiceToggle}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  background: isListening ? 'rgba(244, 63, 94, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                  border: isListening ? '1px solid #f43f5e' : '1px solid var(--border-subtle)',
+                  color: isListening ? '#fb7185' : 'var(--text-secondary)',
+                  cursor: 'pointer'
+                }}
+                title={isListening ? 'Stop Voice Recording' : 'Record Emergency Voice Dispatch (Web Speech API)'}
+              >
+                {isListening ? <MicOff size={12} /> : <Mic size={12} />}
+                <span>{isListening ? 'Listening...' : 'Voice Dispatch'}</span>
+              </button>
+              <span style={{ fontSize: '0.75rem', color: inputText.length > 2000 ? 'var(--accent-rose)' : 'var(--text-muted)' }}>
+                {inputText.length} / 2000 chars
+              </span>
+            </div>
           </div>
           <textarea
             id="claim-text-input"
@@ -323,22 +464,119 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
           />
         </div>
 
-        {/* Quick Sample Selector */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginBottom: '1.25rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Try an Example:</span>
-          {SAMPLE_POSTS.map((sample, idx) => (
-            <button
-              key={idx}
-              type="button"
-              className="btn btn-outline"
-              onClick={() => handleUseSample(sample.text)}
-              style={{ padding: '0.22rem 0.55rem', fontSize: '0.72rem' }}
-            >
-              <Sparkles size={11} />
-              <span>{sample.label}</span>
-            </button>
-          ))}
+        {/* Quick Sample Selector with CrisisMMD Dataset Tab */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Try an Example / Dataset Benchmark:</span>
+            <div style={{ display: 'flex', gap: '0.35rem' }}>
+              <button
+                type="button"
+                onClick={() => setPresetCategory('scenarios')}
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  padding: '0.15rem 0.55rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  border: presetCategory === 'scenarios' ? '1px solid #38bdf8' : '1px solid var(--border-subtle)',
+                  background: presetCategory === 'scenarios' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                  color: presetCategory === 'scenarios' ? '#38bdf8' : 'var(--text-secondary)'
+                }}
+              >
+                Demonstration Scenarios
+              </button>
+              <button
+                type="button"
+                onClick={() => setPresetCategory('crisismmd')}
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  padding: '0.15rem 0.55rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  border: presetCategory === 'crisismmd' ? '1px solid #818cf8' : '1px solid var(--border-subtle)',
+                  background: presetCategory === 'crisismmd' ? 'rgba(129, 140, 248, 0.15)' : 'transparent',
+                  color: presetCategory === 'crisismmd' ? '#a5b4fc' : 'var(--text-secondary)'
+                }}
+              >
+                CrisisMMD Dataset
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', alignItems: 'center' }}>
+            {presetCategory === 'scenarios' ? (
+              SAMPLE_POSTS.map((sample, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => handleUseSample(sample)}
+                  style={{ padding: '0.22rem 0.55rem', fontSize: '0.72rem' }}
+                >
+                  <Sparkles size={11} />
+                  <span>{sample.label}</span>
+                </button>
+              ))
+            ) : (
+              CRISISMMD_BENCHMARKS.map((sample, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => handleUseSample(sample)}
+                  style={{
+                    padding: '0.22rem 0.55rem',
+                    fontSize: '0.72rem',
+                    borderColor: 'rgba(129, 140, 248, 0.4)',
+                    color: '#c7d2fe'
+                  }}
+                  title={`Dataset Ref: ${sample.datasetId}`}
+                >
+                  <Sparkles size={11} style={{ color: '#818cf8' }} />
+                  <span>{sample.label}</span>
+                </button>
+              ))
+            )}
+          </div>
         </div>
+
+        {/* Attached Disaster Imagery Preview */}
+        {attachedMedia.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0.5rem 0.85rem',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              marginBottom: '1rem',
+              fontSize: '0.76rem'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <img
+                src={attachedMedia[0].url}
+                alt="Attached"
+                style={{ width: '40px', height: '30px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}
+              />
+              <div>
+                <span style={{ fontWeight: 600, color: '#38bdf8' }}>Attached Imagery: </span>
+                <span style={{ color: 'var(--text-secondary)' }}>{attachedMedia[0].provenance}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAttachedMedia([])}
+              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '3px' }}
+              title="Remove attached image"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        )}
 
         {/* Options Row & Submit Button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>

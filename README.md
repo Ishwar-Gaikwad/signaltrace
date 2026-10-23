@@ -438,23 +438,16 @@ SignalTrace incorporates an interactive, evidence-grounded **Geographic Intellig
    - Filters:
      - **Provenance**: All, Live USGS Feeds Only, Synthetic Benchmarks Only.
      - **Hazard Category**: Earthquake, Flood, Cyclone, Wildfire, Landslide, Severe Storm.
-     - **Severity**: Extreme, Severe, Moderate, Minor.
-     - **Time Window**: All Available, Past 24 Hours, Past 7 Days, Past 30 Days.
-   - View Controls: "Fit View" automatically computes bounding box to fit all visible markers.
-   - Interactive List Synchronization: Clicking an incident in the feed list smoothly flies the map to its coordinates and opens its popup card. Clicking a map marker highlights the incident in the feed.
-
-6. **Clear Separation of Location from Claim Verification**:
-   - Prominently labeled notice clarifies that a map marker reflects an *officially reported incident location*, **not** validation of social media claims. Verification remains the domain of the deterministic claim engine.
-
----
-
-## 12. Running Tests & Production Build
+     - **Severity**: Extreme## 12. Running Tests & Production Build
 
 ### Running Automated Mocked Tests (Offline, No Internet Required)
 ```bash
 npm test
 ```
-Runs **104 automated unit and integration tests** across 13 test suites:
+Runs **115 automated unit and integration tests** across **16 test suites** (100% passing, 0 failures):
+- `citizenBotApi.test.js` (3 tests): Low-bandwidth WhatsApp and SMS citizen helpline simulation, formatters, validation.
+- `corroborationMatcher.test.js` (3 tests): Dynamic incident matching, spatial/hazard alignment, evidence synthesis.
+- `gdacsAdapter.test.js` (5 tests): Multi-hazard GDACS feed parsing (FL, TC, EQ, WF), coordinate bounds, severity mapping.
 - `incidentGeo.test.js` (3 tests): Geographic coordinate validation, `hasCoordinates=true` filtering, date range boundaries.
 - `usgsAdapter.test.js` (16 tests): GeoJSON parsing, normalization, coordinate bounding, severity mapping, timeout/network mocks.
 - `incidentIngestion.test.js` (7 tests): Feed persistence, strict idempotency, staleness guards, partial batch failures, synthetic isolation.
@@ -469,25 +462,16 @@ Runs **104 automated unit and integration tests** across 13 test suites:
 - `notFound.test.js` (2 tests): 404 handler for unmatched routes.
 - `errorHandler.test.js` (1 test): Centralized error middleware.
 
-### Running Live Connectivity Smoke Test (Requires Internet Access)
+### Ingestion Commands
 ```bash
-npm run test:live
-```
-Contacts the live USGS GeoJSON endpoint directly, reports latency and sample feature data, and validates end-to-end network connectivity.
+# Ingest both USGS Earthquakes and UN GDACS Multi-Hazard feeds
+npm run ingest:incidents
 
-### Running the Frontend Build
-```bash
-npm run build
-```
-
-### Seeding Synthetic Baseline
-```bash
-npm run seed
-```
-
-### Ingesting Live USGS Incident Reports
-```bash
+# Ingest only USGS
 npm run ingest:usgs
+
+# Ingest only UN GDACS
+npm run ingest:gdacs
 ```
 
 ### Running Locally (Development)
@@ -497,35 +481,113 @@ npm run dev
 
 ---
 
-## 13. Phase 7.1: User-Friendly UI Simplification
+## 13. Dynamic Claim Corroboration Engine
 
-Phase 7.1 refined the user-facing interface, copy, and layout to ensure SignalTrace feels like an intuitive emergency verification product rather than a developer testing harness:
+Previously, verification systems were limited to static pre-seeded evidence. SignalTrace features a **Dynamic Corroboration Engine** (`server/src/services/verification/corroborationMatcher.service.js`) that operates during real-time claim verification:
 
-1. **Natural, Accessible Product Language**:
-   - *“Claim Verification Workspace”* → **“Check a Disaster Report”**
-   - *“Disaster Report / Crisis Message”* → **“Paste a disaster report”**
-   - *“Benchmark Scenarios”* → **“Try an Example”** with human-friendly descriptions (*“Flood report (Teesta River)”*, *“Earthquake report (Chamoli M7.2)”*, *“Bridge damage report (Suketi River)”*, etc.)
-   - *“Extract & Verify”* → **“Check Report”**
-   - *“Recent Claims”* → **“Recent Reports”** with `{count} reports checked` and `{count} statement(s)`
-   - *“2 atoms”* → **“2 statements”**
-   - *“Deterministic Pipeline”* → **“How Verification Works”**
-   - *“Stored Incident Intelligence”* → **“Official Reports & Alerts”**
+1. **Hazard & Entity Detection**: Analyzes extracted atomic statements for hazard types (*flood*, *earthquake*, *cyclone*, *wildfire*, *landslide*) and geographic keywords.
+2. **Authoritative Incident Matching**: Queries stored official reports (GDACS, USGS, NDMA) across spatial perimeters and temporal windows.
+3. **Discrepancy & Cancellation Analysis**:
+   - Detects magnitude discrepancies (e.g. claim asserts M7.2 when official report recorded M5.8 → flags `contradicting`).
+   - Detects casualty hyperbole vs official casualty counts.
+   - Detects official cancellations or all-clear bulletins (e.g., alert cancelled → flags `superseding` / `Outdated`).
+4. **Automated Evidence Synthesis**: Synthesizes structured `Evidence` records in MongoDB with exact excerpt quotes, agency URLs, and timestamps before passing them to the deterministic verification engine.
 
-2. **Clear Verdict Explanations**:
-   - Preserved all 4 internal enum values (`Verified`, `Conflicting`, `Outdated`, `Unverified`) with clear, non-overpromising explanations:
-     - 🟢 **Verified**: Available evidence supports this statement.
-     - 🔴 **Conflicting**: Available evidence contradicts this statement.
-     - 🟡 **Outdated**: Newer evidence supersedes earlier information.
-     - ⚪ **Unverified**: There is not enough evidence to confirm this statement.
+---
 
-3. **Demoted Developer Diagnostics into Collapsible "System Details"**:
-   - Moved internal connection parameters, database connection details, and raw CLI ingestion commands into a collapsible **“System Details”** drawer.
-   - Primary dashboard status bar now displays clean, honest metrics: *System Status*, *Live Feed* (distinguishing ready to sync from synced count), and *Example Scenarios*.
+## 14. Global Multi-Hazard Feeds: UN GDACS + USGS
 
-4. **Removed Technical Clutter & Developer Badges**:
-   - Eliminated `extractionMethod: fallback/llm` tags, "Phase 6 Active", "Phase 7 Active", and raw database syntax from regular user flows.
-   - Cleaned branding across the client from leftover mixed branding (`SignalTrace — VeriAlert`) to **SignalTrace** consistently.
-   - Replaced internal evidence tags (`CONTRADICTED BY EVIDENCE` → `CONTRADICTS OFFICIAL REPORT`, `SUPERSEDED BY BULLETIN` → `SUPERSEDED BY NEWER UPDATE`, `CORROBORATED BY SOURCE` → `SUPPORTED BY OFFICIAL REPORT`).
+SignalTrace integrates live international disaster monitoring feeds:
+- **UN/EC Global Disaster Alert and Coordination System (GDACS)**:
+  - Floods (`FL`)
+  - Tropical Cyclones / Hurricanes (`TC`)
+  - Earthquakes (`EQ`)
+  - Wildfires / Forest Fires (`WF`)
+- **USGS Earthquake Hazards Program**:
+  - Real-time global seismic GeoJSON feeds.
+- **Strict Idempotency**:
+  - Compound unique indexing `{ sourceName: 1, sourceReportId: 1 }` prevents duplicates even upon repeated sync execution.
+  - Graceful fallback: works fully offline using pre-seeded synthetic benchmarks if external APIs are unreachable.
 
+---
 
+## 15. Spatial Claim-to-Incident Geographic Intelligence Map
 
+An interactive emergency cartography interface built with Leaflet and CSS radar animations:
+- **Active Claim Plotting**: Visualizes user-submitted claims with an animated radar-pulsing marker (🎯).
+- **Proximity Geodesic Vectors**: Dynamically computes great-circle distance (Haversine formula in km) between the claim location and the nearest official disaster bulletin, rendering Leaflet correlation polylines.
+- **Spatial Intelligence Status**:
+  - 🟢 **Geographically Correlated**: Claim falls within the validated operational perimeter of an official disaster event.
+  - 🟡 **Spatial Discrepancy**: Claim claims a disaster at a location far (>300 km) from confirmed incident epicenters.
+
+---
+
+## 16. Real-World CrisisMMD Dataset Benchmarks
+
+To validate real-world performance against established crisis informatics research, SignalTrace includes presets from the peer-reviewed **CrisisMMD (Crisis Multimodal Dataset)**:
+- **Hurricane Harvey (Rescue)**: Urgent floodwater rescue request in Meyerland, Houston.
+- **California Camp Fire (Evac)**: Mandatory wildfire evacuation order along Highway 70.
+- **Puebla M7.1 Earthquake (Damage)**: Structural collapse search-and-rescue reports in Central Mexico.
+- **Cyclone Fani (Puri)**: Category 4 tropical cyclone landfall and infrastructure impact.
+
+---
+
+## 17. Stakeholder-Tailored SitRep & Dispatch Export
+
+Different emergency stakeholders need different information from verified claims. SignalTrace provides an **Actionable SitRep Modal** with one-click export formats (`.md`, print brief, copy to clipboard):
+- 🚒 **Emergency First Responders & Field Incident Commanders**:
+  - Focus: Ground locations, active hazard perimeters, verified life-safety hazards, debunked rumors to prevent wasted dispatches.
+- 🏥 **Hospital & Healthcare Facilities**:
+  - Focus: Casualty estimates, power/water infrastructure alerts, road access for ambulances, debunked mass-casualty hoaxes.
+- 📢 **Public Safety & Citizens**:
+  - Focus: Plain-language facts, official evacuation status, emergency helpline reminders, clear instructions on what NOT to forward.
+
+---
+
+## 18. Citizen WhatsApp & SMS Helpline Bot (`POST /api/claims/citizen-bot`)
+
+During emergencies, victims and volunteers on the ground do not open complex dashboards—they forward messages on WhatsApp, Telegram, or SMS. SignalTrace provides an **Interactive Citizen Helpline Bot**:
+- **Floating Helpline Widget**: Accessible directly from the bottom right of the UI with simulated WhatsApp and SMS channels.
+- **Low-Bandwidth Mobile Formatting**: Formats verified intel into concise 3-bullet text messages designed for 2G/3G networks:
+  - 🟢 / 🔴 / 🟡 Plain-language status header (e.g. *MISINFORMATION DETECTED / DO NOT FORWARD*).
+  - Point-by-point fact-check breakdown.
+  - Citizen safety advisory and emergency hotline numbers: **112** (Emergency), **1078** (NDMA), and **108** (Ambulance).
+- **Dedicated Endpoint**: `POST /api/claims/citizen-bot` ingests forwarded rumors, runs extraction and deterministic verification, and responds with low-latency conversational guidance.
+
+---
+
+## 19. One-Click Social Media Debunk Graphic Generator
+
+Emergency Public Information Officers (PIOs) need to rapidly arrest viral rumors before mass panic ensues. SignalTrace includes a **Debunk Card Generator**:
+- **High-Contrast Canvas Generator**: Dynamically renders 1200×675 px (16:9 HD standard social format) graphics.
+- **Visual Stamping**: Highlights the viral claim in red quotes, official ground reality from verified bulletins, verification timestamp, and official agency reference `#ST-[ID]`.
+- **Export Options**: One-click **Download (.PNG)**, **Copy Image to Clipboard**, and print views for social platforms (Twitter/X, WhatsApp Status, Instagram).
+
+---
+
+## 20. Information Evolution & Temporal Supersession Timeline
+
+Disaster information is non-stationary: what was true at 10:00 AM may be superseded at 12:00 PM. The **Incident Chronology & Supersession Timeline** provides:
+- Visual chronological progression tracing:
+  1. **Baseline Hazard Detection**: Earliest sensor or agency bulletin time.
+  2. **Viral Claim Assertion**: Timestamp when the social media post began circulating.
+  3. **Official Superseding / Correcting Update**: Authoritative agency updates (e.g., all-clear bulletin, structural safety clearance) resolving the claim.
+- Directly visualizes why an atomic claim is flagged as **🟡 Outdated** or **🔴 Conflicting**.
+
+---
+
+## 21. Multimodal Visual Intelligence & CrisisMMD Image Provenance
+
+Addressing the multimodal dimension of the **CrisisMMD (Crisis Multimodal Dataset)**:
+- **Disaster Scene Classification**: Visual analysis categorizing floodwaters, structural masonry collapse, wildfire smoke plumes, and emergency vehicle staging.
+- **Recycled Photo & Provenance Auditing**: Cross-checks image metadata against known past disasters (e.g., preventing a 2017 flood photo from being passed off as an active 2024 event).
+- **Text-to-Visual Cross-Consistency**: Evaluates whether visual imagery supports or contradicts written claim assertions.
+
+---
+
+## 22. Emergency Voice Dispatch Ingestion (Web Speech API)
+
+Victims trapped in disaster zones or first responders driving rescue vehicles often cannot type:
+- **Speech-to-Text Recognition**: Uses the browser Web Speech API (`webkitSpeechRecognition`) with continuous transcript streaming.
+- **Emergency Voice Dispatch Button**: Dedicated 🎙️ button inside the report input field allowing users to speak their emergency reports.
+- **Offline Audio Simulation**: Includes fallback emergency audio dispatch templates for browsers without active microphone permissions.

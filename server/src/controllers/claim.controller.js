@@ -61,7 +61,8 @@ export const extractClaim = async (req, res, next) => {
       authorId = null,
       authorDisplayName = null,
       publishedAt = null,
-      claimedLocation = null
+      claimedLocation = null,
+      mediaAttachments = []
     } = req.body || {};
 
     // 1. Validate and normalize incoming text
@@ -81,6 +82,7 @@ export const extractClaim = async (req, res, next) => {
           : null,
       publishedAt: publishedAt ? new Date(publishedAt) : null,
       claimedLocation: claimedLocation && typeof claimedLocation === 'object' ? claimedLocation : null,
+      mediaAttachments: Array.isArray(mediaAttachments) ? mediaAttachments : [],
       processingStatus: 'processing',
       atomicClaims: []
     });
@@ -171,3 +173,132 @@ export const verifyClaim = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Controller to handle POST /api/claims/citizen-bot
+ * Citizen WhatsApp / SMS helpline simulation.
+ * Ingests forwarded message, runs extraction & deterministic verification,
+ * and formats a low-bandwidth, conversational emergency response.
+ */
+export const citizenBotHandler = async (req, res, next) => {
+  try {
+    const { message, channel = 'whatsapp' } = req.body || {};
+
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return errorResponse(
+        res,
+        'Missing or empty message. Please provide a disaster claim or forwarded text.',
+        400,
+        'VALIDATION_ERROR'
+      );
+    }
+
+    const validatedText = validateInputText(message);
+    const normalizedChannel = channel === 'sms' ? 'sms' : 'whatsapp';
+
+    // 1. Create Claim record
+    const createdClaim = await Claim.create({
+      originalText: validatedText,
+      sourcePlatform: normalizedChannel === 'sms' ? 'citizen-sms-hotline' : 'citizen-whatsapp-hotline',
+      processingStatus: 'processing',
+      atomicClaims: []
+    });
+
+    // 2. Extract atomic claims
+    const { claims } = await extractAtomicClaims(validatedText);
+    createdClaim.atomicClaims = claims;
+    createdClaim.processingStatus = 'completed';
+    await createdClaim.save();
+
+    // 3. Verify using deterministic engine + corroboration matcher
+    const verificationSummary = await verifyClaimAtomics(createdClaim);
+
+    const results = verificationSummary.verificationResults || [];
+    const hasConflicting = results.some((r) => r.verificationStatus === 'Conflicting');
+    const hasOutdated = results.some((r) => r.verificationStatus === 'Outdated');
+    const hasVerified = results.some((r) => r.verificationStatus === 'Verified');
+
+    let overallStatus = 'Unverified';
+    let statusHeader = '⚪ UNVERIFIED / PROCEED WITH CAUTION';
+    let advice = 'No authoritative government report confirms this claim yet. Avoid sharing unverified forwarded messages.';
+
+    if (hasConflicting) {
+      overallStatus = 'Conflicting';
+      statusHeader = '🔴 MISINFORMATION DETECTED / DO NOT FORWARD';
+      advice = 'Official disaster authorities contradict this message. Do NOT forward this to family groups or social media.';
+    } else if (hasOutdated) {
+      overallStatus = 'Outdated';
+      statusHeader = '🟡 SUPERSEDED / OUTDATED ALERT';
+      advice = 'This message contains superseded emergency info. Newer bulletins have since been issued by authorities.';
+    } else if (hasVerified) {
+      overallStatus = 'Verified';
+      statusHeader = '🟢 OFFICIAL DISASTER BULLETIN VERIFIED';
+      advice = 'This emergency report aligns with verified disaster bulletins. Follow local district administration evacuation instructions.';
+    }
+
+    // Format low-bandwidth conversational text
+    const shortId = createdClaim._id.toString().slice(-6).toUpperCase();
+    const timestampStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let replyLines = [];
+    if (normalizedChannel === 'whatsapp') {
+      replyLines.push(`🚨 *SIGNALTRACE DISASTER HELPLINE* (Ref: #ST-${shortId})`);
+      replyLines.push(`⏱️ *Checked at:* ${timestampStr}`);
+      replyLines.push(``);
+      replyLines.push(`*STATUS: ${statusHeader}*`);
+      replyLines.push(``);
+      replyLines.push(`📋 *FACT-CHECK BREAKDOWN:*`);
+
+      results.forEach((item, idx) => {
+        const icon =
+          item.verificationStatus === 'Verified'
+            ? '✅'
+            : item.verificationStatus === 'Conflicting'
+            ? '❌'
+            : item.verificationStatus === 'Outdated'
+            ? '⚠️'
+            : '❔';
+        replyLines.push(`${icon} *Claim ${idx + 1}:* "${item.claimText}"`);
+        replyLines.push(`   └ *Verdict:* ${item.verificationStatus}`);
+        if (item.explanation) {
+          replyLines.push(`   └ *Details:* ${item.explanation}`);
+        }
+      });
+
+      replyLines.push(``);
+      replyLines.push(`⚠️ *CITIZEN ADVISORY:*`);
+      replyLines.push(advice);
+      replyLines.push(``);
+      replyLines.push(`📞 *EMERGENCY NUMBERS:*`);
+      replyLines.push(`• National Emergency: 112`);
+      replyLines.push(`• Disaster Management (NDMA): 1078`);
+      replyLines.push(`• Ambulance / Medical: 108`);
+    } else {
+      // SMS: ultra compact text (<300 chars)
+      replyLines.push(`[SignalTrace Alert ST-${shortId}]`);
+      replyLines.push(`STATUS: ${overallStatus.toUpperCase()}`);
+      replyLines.push(`FACTS: ${results.map((r, i) => `#${i + 1}:${r.verificationStatus}`).join(', ')}`);
+      replyLines.push(`ADVICE: ${advice}`);
+      replyLines.push(`HELP: Call 112 or NDMA 1078`);
+    }
+
+    const formattedReply = replyLines.join('\n');
+
+    return successResponse(
+      res,
+      {
+        claimId: createdClaim._id,
+        channel: normalizedChannel,
+        overallStatus,
+        botReply: formattedReply,
+        atomicResults: results,
+        timestamp: new Date().toISOString()
+      },
+      'Citizen bot verification completed',
+      200
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+

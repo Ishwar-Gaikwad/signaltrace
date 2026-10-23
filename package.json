@@ -10,6 +10,8 @@
     "start:server": "npm --prefix server start",
     "seed": "npm --prefix server run seed",
     "ingest:usgs": "npm --prefix server run ingest:usgs",
+    "ingest:gdacs": "npm --prefix server run ingest:gdacs",
+    "ingest:incidents": "npm --prefix server run ingest:incidents",
     "sync:incidents": "npm --prefix server run sync:incidents",
     "build": "npm --prefix client run build",
     "build:client": "npm --prefix client run build",

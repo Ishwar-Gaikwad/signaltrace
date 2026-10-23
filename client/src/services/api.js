@@ -333,3 +333,53 @@ export const fetchIncidents = async ({
     clearTimeout(timeoutId);
   }
 };
+
+/**
+ * Sends a message to the Citizen WhatsApp / SMS helpline simulation
+ * @param {string} message - Message or forwarded rumor text
+ * @param {string} [channel='whatsapp'] - 'whatsapp' | 'sms'
+ * @param {number} [timeoutMs=15000]
+ * @returns {Promise<object>} Parsed response data { reply, status, channel, atomicResults }
+ */
+export const sendCitizenBotMessage = async (message, channel = 'whatsapp', timeoutMs = 15000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  const endpoint = `${API_BASE_URL}/claims/citizen-bot`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({ message, channel }),
+      signal: controller.signal
+    });
+
+    let json;
+    try {
+      json = await response.json();
+    } catch {
+      throw new ApiError(`Invalid JSON received from ${endpoint}`, response.status);
+    }
+
+    if (!response.ok || !json.success) {
+      const errorMessage = json?.error?.message || `Helpline service failed with HTTP ${response.status}`;
+      const errorCode = json?.error?.code || 'BOT_ERROR';
+      throw new ApiError(errorMessage, response.status, errorCode, json?.error?.details);
+    }
+
+    return json.data;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new ApiError(`Request to ${endpoint} timed out after ${timeoutMs}ms`, 408, 'TIMEOUT');
+    }
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(err.message || 'Network error: Helpline service unreachable', null, 'NETWORK_ERROR');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+

@@ -18,6 +18,7 @@ import ClaimExtractionCard from '../components/ClaimExtractionCard';
 import RecentClaimsPanel from '../components/RecentClaimsPanel';
 import IncidentSourcePanel from '../components/IncidentSourcePanel';
 import GeographicIntelligenceMap from '../components/GeographicIntelligenceMap';
+import CitizenBotSimulator from '../components/CitizenBotSimulator';
 import { fetchIncidents } from '../services/api';
 
 /**
@@ -27,6 +28,7 @@ import { fetchIncidents } from '../services/api';
 export const DashboardShell = ({ healthState }) => {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [selectedClaimId, setSelectedClaimId] = useState(null);
+  const [activeClaim, setActiveClaim] = useState(null);
   const [claimsRefreshTrigger, setClaimsRefreshTrigger] = useState(0);
   const [liveIncidentStats, setLiveIncidentStats] = useState({
     checked: false,
@@ -75,13 +77,15 @@ export const DashboardShell = ({ healthState }) => {
     }
   }, [isConnected]);
 
-  const handleClaimSubmitted = () => {
+  const handleClaimSubmitted = (claim) => {
+    if (claim) setActiveClaim(claim);
     // Increment trigger so RecentClaimsPanel re-fetches
     setClaimsRefreshTrigger((prev) => prev + 1);
   };
 
-  const handleSelectClaim = (id) => {
+  const handleSelectClaim = (id, claim = null) => {
     setSelectedClaimId(id);
+    if (claim) setActiveClaim(claim);
     // Smooth scroll to top of workspace if needed
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
@@ -253,8 +257,12 @@ export const DashboardShell = ({ healthState }) => {
         <div>
           <ClaimExtractionCard
             selectedClaimId={selectedClaimId}
-            onClearSelectedClaim={() => setSelectedClaimId(null)}
+            onClearSelectedClaim={() => {
+              setSelectedClaimId(null);
+              setActiveClaim(null);
+            }}
             onClaimSubmitted={handleClaimSubmitted}
+            onClaimActive={(claim) => setActiveClaim(claim)}
           />
         </div>
 
@@ -268,9 +276,9 @@ export const DashboardShell = ({ healthState }) => {
         </div>
       </section>
 
-      {/* Interactive Geographic Intelligence Map (Phase 7) */}
+      {/* Interactive Geographic Intelligence Map with Claim Spatial Overlay */}
       <section style={{ marginBottom: '2rem' }}>
-        <GeographicIntelligenceMap />
+        <GeographicIntelligenceMap activeClaim={activeClaim} />
       </section>
 
       {/* Secondary Dashboard Area: Authoritative Incident Sources Panel */}
@@ -339,6 +347,9 @@ export const DashboardShell = ({ healthState }) => {
           Evidence-based disaster report verification with transparent provenance.
         </p>
       </footer>
+
+      {/* Interactive Citizen WhatsApp / SMS Helpline Simulator */}
+      <CitizenBotSimulator />
     </div>
   );
 };

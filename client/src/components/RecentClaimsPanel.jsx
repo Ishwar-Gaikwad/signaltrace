@@ -258,13 +258,13 @@ export const RecentClaimsPanel = ({ selectedClaimId, onSelectClaim, refreshTrigg
           return (
             <div
               key={claim._id}
-              onClick={() => onSelectClaim(claim._id)}
+              onClick={() => onSelectClaim(claim._id, claim)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  onSelectClaim(claim._id);
+                  onSelectClaim(claim._id, claim);
                 }
               }}
               style={{

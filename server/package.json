@@ -9,6 +9,8 @@
     "dev": "nodemon src/server.js",
     "seed": "node src/scripts/seed.js",
     "ingest:usgs": "node src/scripts/ingestIncidents.js",
+    "ingest:gdacs": "node src/scripts/ingestIncidents.js",
+    "ingest:incidents": "node src/scripts/ingestIncidents.js",
     "sync:incidents": "node src/scripts/ingestIncidents.js",
     "test:live": "node src/scripts/checkLiveFeed.js",
     "test": "vitest run"
@@ -17,7 +19,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "mongoose": "^8.9.5"
+    "mongoose": "^8.9.5",
+    "signaltrace": "file:.."
   },
   "devDependencies": {
     "nodemon": "^3.1.9",

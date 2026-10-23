@@ -859,6 +859,46 @@ body {
   border: 1px solid rgba(56, 189, 248, 0.3) !important;
 }
 
+/* Custom Claim Marker with Radar Pulse */
+.custom-claim-marker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  z-index: 1200 !important;
+}
+
+.custom-claim-marker:hover {
+  transform: translateY(-4px) scale(1.15);
+}
+
+.custom-claim-marker .marker-badge {
+  background: rgba(129, 140, 248, 0.25);
+  border-color: #818cf8;
+  color: #c7d2fe;
+}
+
+.custom-claim-marker .marker-body {
+  background: #1e1b4b;
+  border: 2px solid #818cf8;
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.8), 0 4px 10px rgba(0, 0, 0, 0.7);
+  animation: claimRadarPulse 2s infinite ease-out;
+}
+
+@keyframes claimRadarPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.8), 0 4px 10px rgba(0, 0, 0, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(129, 140, 248, 0), 0 4px 10px rgba(0, 0, 0, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0), 0 4px 10px rgba(0, 0, 0, 0.7);
+  }
+}
+
 .signaltrace-custom-popup a.leaflet-popup-close-button {
   color: #94a3b8 !important;
   padding: 6px !important;

@@ -18,6 +18,7 @@ import {
   Marker,
   Popup,
   Circle,
+  Polyline,
   useMap
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -30,6 +31,7 @@ import {
   AlertTriangle,
   ExternalLink,
   Info,
+  Target,
   X
 } from 'lucide-react';
 import { fetchIncidents } from '../services/api';
@@ -37,7 +39,9 @@ import {
   isValidCoordinate,
   formatCoordinates,
   computeIncidentBounds,
-  getSeverityConfig
+  getSeverityConfig,
+  calculateDistanceKm,
+  resolveClaimCoordinates
 } from '../utils/geoUtils';
 
 // Helper component to programmatically control Leaflet map viewport
@@ -98,7 +102,27 @@ const createIncidentMarkerIcon = (incident, isSelected) => {
   });
 };
 
-export const GeographicIntelligenceMap = () => {
+const createClaimMarkerIcon = () => {
+  const html = `
+    <div class="custom-claim-marker" style="--marker-color: #818cf8;">
+      <span class="marker-badge">CLAIM</span>
+      <div class="marker-body">
+        <span class="marker-glyph">🎯</span>
+      </div>
+      <div class="marker-tail" style="border-top-color: #818cf8;"></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-leaflet-marker-wrapper',
+    iconSize: [36, 48],
+    iconAnchor: [18, 48],
+    popupAnchor: [0, -48]
+  });
+};
+
+export const GeographicIntelligenceMap = ({ activeClaim = null }) => {
   const [incidents, setIncidents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -179,10 +203,38 @@ export const GeographicIntelligenceMap = () => {
     return filteredIncidents.filter((inc) => !isValidCoordinate(inc?.geographicInfo?.coordinates));
   }, [filteredIncidents]);
 
-  // Compute bounding box
   const mapBounds = useMemo(() => {
     return computeIncidentBounds(mappedIncidents);
   }, [mappedIncidents]);
+
+  // Resolve active claim coordinates
+  const claimGeo = useMemo(() => resolveClaimCoordinates(activeClaim), [activeClaim]);
+
+  // Compute closest incident to the active claim for spatial cross-examination
+  const spatialCorrelation = useMemo(() => {
+    if (!claimGeo || mappedIncidents.length === 0) return null;
+    let closest = null;
+    let minDistance = Infinity;
+
+    for (const inc of mappedIncidents) {
+      const d = calculateDistanceKm(claimGeo.coordinates, inc.geographicInfo.coordinates);
+      if (d !== null && d < minDistance) {
+        minDistance = d;
+        closest = { incident: inc, distanceKm: d };
+      }
+    }
+    return closest;
+  }, [claimGeo, mappedIncidents]);
+
+  // When active claim changes, smoothly focus map on the claim location
+  useEffect(() => {
+    if (claimGeo?.coordinates) {
+      setTargetPoint({
+        lat: Number(claimGeo.coordinates.latitude),
+        lng: Number(claimGeo.coordinates.longitude)
+      });
+    }
+  }, [claimGeo]);
 
   const handleSelectIncident = (incident) => {
     setSelectedIncidentId(incident._id);
@@ -434,6 +486,57 @@ export const GeographicIntelligenceMap = () => {
         </div>
       )}
 
+      {/* Spatial Intelligence Banner when an active claim has resolved coordinates */}
+      {claimGeo && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            padding: '0.75rem 1rem',
+            background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.12) 0%, rgba(56, 189, 248, 0.08) 100%)',
+            border: '1px solid rgba(129, 140, 248, 0.4)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: '1rem',
+            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.1)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <Target size={18} style={{ color: '#818cf8', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e0e7ff' }}>
+                Active Statement Location: <span style={{ color: '#ffffff' }}>{claimGeo.label}</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                {formatCoordinates(claimGeo.coordinates)}
+              </div>
+            </div>
+          </div>
+
+          {spatialCorrelation && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '0.25rem 0.6rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: spatialCorrelation.distanceKm <= 75 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                  color: spatialCorrelation.distanceKm <= 75 ? 'var(--accent-cyan)' : '#fb7185',
+                  border: `1px solid ${spatialCorrelation.distanceKm <= 75 ? 'rgba(56, 189, 248, 0.35)' : 'rgba(244, 63, 94, 0.35)'}`
+                }}
+              >
+                {spatialCorrelation.distanceKm <= 75
+                  ? `✅ Geographically Correlated (${spatialCorrelation.distanceKm} km to ${spatialCorrelation.incident.sourceName})`
+                  : `⚠️ Spatial Discrepancy (${spatialCorrelation.distanceKm} km from nearest alert)`}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Interactive Map & Synchronized List Layout */}
       <div className="geo-map-split-container">
         {/* Left Column: Map Canvas */}
@@ -469,6 +572,53 @@ export const GeographicIntelligenceMap = () => {
                 targetPoint={targetPoint}
                 shouldFitBounds={fitTrigger > 0 || (mappedIncidents.length > 0 && !targetPoint)}
               />
+
+              {/* Active Claim Pin & Correlation Line */}
+              {claimGeo && spatialCorrelation && (
+                <Polyline
+                  positions={[
+                    [Number(claimGeo.coordinates.latitude), Number(claimGeo.coordinates.longitude)],
+                    [
+                      Number(spatialCorrelation.incident.geographicInfo.coordinates.latitude),
+                      Number(spatialCorrelation.incident.geographicInfo.coordinates.longitude)
+                    ]
+                  ]}
+                  pathOptions={{
+                    color: spatialCorrelation.distanceKm <= 75 ? '#38bdf8' : '#fb7185',
+                    dashArray: '6, 6',
+                    weight: 2.5,
+                    opacity: 0.85
+                  }}
+                />
+              )}
+
+              {claimGeo && (
+                <Marker
+                  position={[Number(claimGeo.coordinates.latitude), Number(claimGeo.coordinates.longitude)]}
+                  icon={createClaimMarkerIcon()}
+                >
+                  <Popup className="signaltrace-custom-popup">
+                    <div style={{ padding: '0.4rem', maxWidth: '280px', color: '#f1f5f9' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.25)', color: '#a5b4fc', border: '1px solid #818cf8' }}>
+                          REPORT UNDER VERIFICATION
+                        </span>
+                        {spatialCorrelation && (
+                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: spatialCorrelation.distanceKm <= 75 ? '#38bdf8' : '#fb7185' }}>
+                            {spatialCorrelation.distanceKm} km to alert
+                          </span>
+                        )}
+                      </div>
+                      <h4 style={{ fontSize: '0.88rem', fontWeight: 600, color: '#ffffff', marginBottom: '0.3rem' }}>
+                        🎯 {claimGeo.label}
+                      </h4>
+                      <p style={{ fontSize: '0.75rem', color: '#cbd5e1', lineHeight: 1.45 }}>
+                        {activeClaim?.originalText || activeClaim?.rawText || 'Active user-submitted crisis statement.'}
+                      </p>
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
 
               {/* Incident Markers */}
               {mappedIncidents.map((incident) => {

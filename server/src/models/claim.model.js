@@ -215,6 +215,17 @@ const ClaimSchema = new Schema(
       type: [AtomicClaimSchema],
       default: []
     },
+    mediaAttachments: {
+      type: [
+        {
+          url: { type: String, trim: true },
+          mediaType: { type: String, default: 'image', trim: true },
+          provenance: { type: String, trim: true, default: null },
+          consistencyVerdict: { type: String, trim: true, default: null }
+        }
+      ],
+      default: []
+    },
     processingStatus: {
       type: String,
       enum: {

@@ -21,10 +21,8 @@ export const validateEnv = () => {
     errors.push(`PORT must be a valid integer between 1 and 65535. Received: "${port}"`);
   }
 
-  const mongodbUri = process.env.MONGODB_URI;
-  if (!mongodbUri) {
-    errors.push('MONGODB_URI environment variable is required.');
-  } else if (!mongodbUri.startsWith('mongodb://') && !mongodbUri.startsWith('mongodb+srv://')) {
+  const mongodbUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/verialert';
+  if (!mongodbUri.startsWith('mongodb://') && !mongodbUri.startsWith('mongodb+srv://')) {
     errors.push(`MONGODB_URI must start with "mongodb://" or "mongodb+srv://". Received: "${mongodbUri}"`);
   }
 
@@ -47,8 +45,9 @@ export const config = Object.freeze({
   llmBaseUrl: process.env.LLM_BASE_URL || null,
   llmTimeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 8000,
 
-  // Disaster Feed Ingestion (USGS Earthquake Hazards Program)
+  // Disaster Feed Ingestion (USGS & GDACS)
   usgsFeedUrl: process.env.USGS_FEED_URL || 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson',
+  gdacsFeedUrl: process.env.GDACS_FEED_URL || 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventtypes=FL,TC,EQ,VO,DR&alertlevel=green;orange;red',
   ingestionTimeoutMs: Number(process.env.INGESTION_TIMEOUT_MS) || 10000,
   ingestionMaxRecords: Number(process.env.INGESTION_MAX_RECORDS) || 100
 });

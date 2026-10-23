@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SignalTrace — Phase 4.1: Deterministic Verification Engine (Hardened)
  *
  * VERDICT PRECEDENCE RULE (applied in order, exactly one verdict per atomic claim):
@@ -41,6 +41,7 @@
  */
 
 import { Evidence, Claim } from '../../models/index.js';
+import { matchAndCorroborateClaim } from './corroborationMatcher.service.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -206,6 +207,9 @@ export const determineVerificationStatus = async (atomicClaim, parentClaim) => {
  * }>}
  */
 export const verifyClaimAtomics = async (claimDoc) => {
+  // Dynamically match and generate evidence from stored IncidentReports if none exist
+  await matchAndCorroborateClaim(claimDoc);
+
   const parentLean = claimDoc.toObject ? claimDoc.toObject() : claimDoc;
   const results = [];
   const updateOps = {};

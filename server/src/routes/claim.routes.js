@@ -1,7 +1,20 @@
 import { Router } from 'express';
-import { listClaims, getClaim, extractClaim, verifyClaim } from '../controllers/claim.controller.js';
+import {
+  listClaims,
+  getClaim,
+  extractClaim,
+  verifyClaim,
+  citizenBotHandler
+} from '../controllers/claim.controller.js';
 
 const router = Router();
+
+/**
+ * @route   POST /api/claims/citizen-bot
+ * @desc    Simulate low-bandwidth Citizen WhatsApp / SMS disaster helpline bot
+ * @access  Public
+ */
+router.post('/claims/citizen-bot', citizenBotHandler);
 
 /**
  * @route   POST /api/claims/extract
