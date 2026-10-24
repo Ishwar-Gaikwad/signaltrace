@@ -119,4 +119,27 @@ describe('Phase 2 — Claims Read-Only API Endpoints', () => {
       expect(res.body.error).toHaveProperty('code', 'INVALID_IDENTIFIER');
     });
   });
+
+  describe('POST /api/claims/:id/verify', () => {
+    it('should verify an existing saved report and return its evidence details', async () => {
+      const res = await request(app).post(`/api/claims/${sampleClaimId}/verify`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body.data).toHaveProperty('_id', sampleClaimId);
+      expect(res.body.data.atomicClaims.length).toBeGreaterThan(0);
+      expect(res.body.meta.verificationResults).toHaveLength(res.body.data.atomicClaims.length);
+      expect(res.body.meta.verificationResults[0]).toHaveProperty('verificationStatus');
+      expect(Array.isArray(res.body.meta.verificationResults[0].evidenceSummary)).toBe(true);
+    });
+
+    it('should return RESOURCE_NOT_FOUND for a nonexistent saved report', async () => {
+      const nonExistentId = new mongoose.Types.ObjectId().toString();
+      const res = await request(app).post(`/api/claims/${nonExistentId}/verify`);
+
+      expect(res.status).toBe(404);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.error).toHaveProperty('code', 'RESOURCE_NOT_FOUND');
+    });
+  });
 });

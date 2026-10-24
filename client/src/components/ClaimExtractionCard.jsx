@@ -110,9 +110,8 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
     setError(null);
 
     fetchClaimById(selectedClaimId)
-      .then((res) => {
+      .then((claim) => {
         if (isCancelled) return;
-        const claim = res.data;
         setInputText(claim.originalText || claim.rawText || '');
         setSourcePlatform(claim.sourcePlatform || 'web-submission');
         setIsDemoSample(claim.isSynthetic === true);
@@ -132,8 +131,10 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
                 atomicClaimId: ac.atomicClaimId,
                 claimText: ac.text || ac.claimText,
                 verificationStatus: ac.verificationStatus,
-                explanation: ac.evidenceExplanation || ac.explanation,
-                evidenceSummary: ac.evidenceSummary || []
+                verificationExplanation: ac.verificationExplanation,
+                evidenceSummary: (claim.evidence || []).filter(
+                  (evidence) => evidence.atomicClaimId === ac.atomicClaimId
+                )
               }))
             }
           });
@@ -143,7 +144,11 @@ export const ClaimExtractionCard = ({ selectedClaimId, onClearSelectedClaim, onC
       })
       .catch((err) => {
         if (!isCancelled) {
-          setError(`Failed to load selected claim: ${err.message}`);
+          if (err.status === 404 || err.code === 'RESOURCE_NOT_FOUND') {
+            setError('Selected report was not found. Refresh the reports list and select an existing report.');
+          } else {
+            setError(`Unable to load selected report: ${err.message}`);
+          }
         }
       })
       .finally(() => {
